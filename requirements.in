@@ -1,0 +1,5 @@
+msgpack
+mysql-connector-python
+fastapi
+argon2-cffi
+setuptools
