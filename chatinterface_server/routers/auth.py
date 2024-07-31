@@ -17,6 +17,9 @@ async def retrieve_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     req: Request
 ) -> dict[str, str]:
+    if len(form_data.username) > 20:
+        raise HTTPException(status_code=400, detail="Username too long")
+
     state: Model_AppState = req.state
     result: str | int = await state.db.users.verify_user(form_data.username, form_data.password)
     match result:
