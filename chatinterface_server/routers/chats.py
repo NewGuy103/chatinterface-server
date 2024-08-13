@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from ..models import Model_SessionInfo, Model_AppState
 from ..dependencies import get_session_info
 
-router = APIRouter(prefix="/chat", tags=['chats'])
+router = APIRouter(prefix="/chats", tags=['chats'])
 logger: logging.Logger = logging.getLogger("chatinterface.logger.ws")
 
 
