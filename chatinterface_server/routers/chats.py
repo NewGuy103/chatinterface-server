@@ -41,3 +41,14 @@ async def get_previous_messages(
             raise HTTPException(status_code=500, detail="Server error")
 
     return result
+
+
+@router.get('/user-exists')
+async def check_user_exists(
+    req: Request,
+    username: Annotated[str, Query(description="Username to check", max_length=20, strict=True)],
+    session: Annotated[Model_SessionInfo, Depends(get_session_info)]
+) -> bool:
+    state: Model_AppState = req.state
+    user_exists: bool = await state.db.users.check_user_exists(username)
+    return user_exists

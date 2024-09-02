@@ -236,14 +236,25 @@ class UserMethods:
             """, [session_token, user_id, expires_on])
 
         return session_token
-    
+
+    @async_threaded
+    def check_user_exists(self, username: str) -> bool:
+        if not isinstance(username, str):
+            raise TypeError("username is not a string")
+        
+        with transaction(self.db) as cursor:
+            cursor.execute("SELECT username FROM users WHERE username=%s", [username])
+            user: tuple[str] = cursor.fetchone()
+        
+        return bool(user)
+
     def get_sessions(self, username: str):
         ...
 
     @async_threaded
     def revoke_session(self, session_id: str) -> int | str:
         if not isinstance(session_id, str):
-            raise TypeError("session id is not a string")
+            raise TypeError("session ID is not a string")
 
         with transaction(self.db) as cursor:
             cursor.execute("SELECT expires_on FROM user_sessions WHERE session_id=%s", [session_id])
