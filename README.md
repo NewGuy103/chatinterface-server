@@ -2,7 +2,7 @@
 
 A server to create a centralized chat platform, and designed to be self-hosted.
 
-Currently a work in progress.
+Currently in development, anything can change at any time!
 
 ## Requirements
 

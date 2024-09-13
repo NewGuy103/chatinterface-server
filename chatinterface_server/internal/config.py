@@ -4,7 +4,9 @@ import logging.config
 
 from ..version import __version__
 
+APP_NAME: str = "chatinterface-server"
 DEFAULT_MAIN_CONFIG: dict = {}  # will use soon
+DEFAULT_APP_DIR: str = os.path.join("/", "opt", APP_NAME)
 
 
 def load_or_create_config(config_path: str, default_config: dict) -> dict:
@@ -108,16 +110,15 @@ class ConfigMaker:
 
 
 class ConfigManager:
-    def __init__(self) -> None:
+    def __init__(self, base_dir: str = DEFAULT_APP_DIR) -> None:
+        if not base_dir:
+            raise ValueError("application base directory required but is empty")
+        if not os.path.isdir(base_dir):
+            raise ValueError("application base directory does not exist, have you created it?")
+
         self.conf_dir: str = ''
         self.log_dir: str = ''
 
-        base_dir: str = os.getenv("CHATINTERFACE_BASEDIR", '')
-        if not base_dir:
-            raise ValueError("base directory required but not specified")
-        if not os.path.isdir(base_dir):
-            raise ValueError("base directory is not a directory/does not exist")
-        
         self.setup_directories(base_dir)
         self.conf_maker: ConfigMaker = ConfigMaker(self.log_dir, self.conf_dir)
 
