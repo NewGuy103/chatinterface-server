@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket
 from fastapi.security import OAuth2PasswordRequestForm
 
-from ..models import Model_SessionInfo, Model_AppState
+from ..models.common import AppState, SessionInfo
 from ..dependencies import get_session_info
 
 router = APIRouter(prefix="/token", tags=['auth'])
@@ -20,7 +20,7 @@ async def retrieve_token(
     if len(form_data.username) > 20:
         raise HTTPException(status_code=400, detail="Username too long")
 
-    state: Model_AppState = req.state
+    state: AppState = req.state
     result: str | int = await state.db.users.verify_user(form_data.username, form_data.password)
     match result:
         case 0: 
@@ -41,14 +41,14 @@ async def retrieve_token(
 
 @router.post("/revoke")
 async def revoke_token(
-    session: Annotated[Model_SessionInfo, Depends(get_session_info)],
+    session: Annotated[SessionInfo, Depends(get_session_info)],
     req: Request
 ) -> dict:
-    state: Model_AppState = req.state
+    state: AppState = req.state
     del_result: int | str = await state.db.users.revoke_session(session.token)
 
     if del_result == "INVALID_SESSION":
-        raise HTTPException(status_code=404, detail="Session token invalid")
+        raise HTTPException(status_code=401, detail="Session token invalid")
 
     ws_clients_copy: dict = state.ws_clients.copy()
     for c_id, c_dict in ws_clients_copy.items():
@@ -69,7 +69,7 @@ async def revoke_token(
 
 
 @router.get("/info")
-async def info_token(session: Annotated[Model_SessionInfo, Depends(get_session_info)]) -> dict[str, str]:
+async def info_token(session: Annotated[SessionInfo, Depends(get_session_info)]) -> dict[str, str]:
     token_data: dict = {
         'username': session.username,
         'created_at': session.created_at

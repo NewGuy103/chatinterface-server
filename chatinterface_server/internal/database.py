@@ -61,12 +61,31 @@ def async_threaded(func):
 
 
 class MainDatabase:
-    def __init__(self, db_config: dict, executor_config: dict) -> None:
+    def __init__(
+            self, host: str, 
+            port: int = 3306,
+            db_name: str = 'chatinterface_server',
+            db_user: str = 'chatinterface_server',
+            db_password: str = '',
+            pool_size: int = 10
+    ) -> None:
         self.__closed: bool = False
-        self.dbconfig: dict = db_config
+        self.dbconfig: dict = {
+            'host': host,
+            'port': port,
+            'db': db_name,
+            'user': db_user,
+            'password': db_password,
+            'pool_size': pool_size,
+            'pool_name': 'chatinterface_server-mysql-pool',
+            'pool_reset_session': True
+        }
 
         self.pw_hasher: argon2.PasswordHasher = argon2.PasswordHasher()
-        self.executor: ThreadPoolExecutor = ThreadPoolExecutor(**executor_config)
+        self.executor: ThreadPoolExecutor = ThreadPoolExecutor(
+            max_workers=pool_size, 
+            thread_name_prefix="chatinterface_server-mysql-thread-"
+        )
 
     @async_threaded
     def setup(self):

@@ -1,4 +1,5 @@
 msgpack
 mysql-connector-python
-fastapi
+fastapi[standard]
+uvicorn[standard]
 argon2-cffi

@@ -1,10 +1,10 @@
-from .models import Model_SessionInfo, Model_AppState
+from .models.common import SessionInfo, AppState
 from fastapi import Header, Request, HTTPException
 from typing import Annotated
 
 
-async def get_session_info(authorization: Annotated[str, Header()], request: Request) -> Model_SessionInfo:
-    state: Model_AppState = request.state
+async def get_session_info(authorization: Annotated[str, Header()], request: Request) -> SessionInfo:
+    state: AppState = request.state
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing")
 
@@ -13,4 +13,4 @@ async def get_session_info(authorization: Annotated[str, Header()], request: Req
         raise HTTPException(status_code=401, detail="Session token invalid")
     
     session_info: dict[str, str | bool] = await state.db.users.get_session_info(authorization)
-    return Model_SessionInfo(**session_info)
+    return SessionInfo(**session_info)

@@ -7,10 +7,8 @@ from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from ..models import (
-    Model_SessionInfo, Model_AppState, Model_ChatWSMessageSend,
-    Model_WSClientInfo, Model_WSMessageData
-)
+from ..models.common import SessionInfo, AppState
+from ..models.ws import ClientInfo, MessageData, ChatMessageSend
 
 router: APIRouter = APIRouter(prefix="/ws", tags=['websocket'])
 logger: logging.Logger = logging.getLogger("chatinterface.logger.ws")
@@ -26,7 +24,7 @@ async def ws_send_msg(ws: WebSocket, message: str, data: dict) -> bytes:
 
 @router.websocket("/chat")
 async def create_websocket(websocket: WebSocket):
-    state: Model_AppState = websocket.state
+    state: AppState = websocket.state
     await websocket.accept()
 
     try:
@@ -75,9 +73,7 @@ async def create_websocket(websocket: WebSocket):
         await websocket.close(code=1008, reason="INVALID_CREDENTIALS")
         return
     
-    session_info: Model_SessionInfo = Model_SessionInfo(
-        **await state.db.users.get_session_info(session_token)
-    )
+    session_info: SessionInfo = SessionInfo(**await state.db.users.get_session_info(session_token))
     client_id: str = str(uuid.uuid4())
 
     client_info_dict: dict[str, WebSocket | str] = {
@@ -87,7 +83,7 @@ async def create_websocket(websocket: WebSocket):
         'token': session_info.token
     }
 
-    client_info: Model_WSClientInfo = Model_WSClientInfo(**client_info_dict)
+    client_info: ClientInfo = ClientInfo(**client_info_dict)
     state.ws_clients[client_id] = client_info
 
     await websocket.send_bytes(msgpack.packb("OK"))
@@ -116,7 +112,7 @@ async def create_websocket(websocket: WebSocket):
                 return
 
             try:
-                loaded_msg: Model_WSMessageData = Model_WSMessageData(**unpacked_data)
+                loaded_msg: MessageData = MessageData(**unpacked_data)
             except ValidationError:
                 await websocket.close(code=1008, reason="INVALID_DATA")
                 return
@@ -143,15 +139,32 @@ async def create_websocket(websocket: WebSocket):
 
 
 async def websocket_message_send(
-        ws: WebSocket, data: Model_WSMessageData,
-        session: Model_SessionInfo,
-        state: Model_AppState
+        ws: WebSocket, data: MessageData,
+        session: SessionInfo,
+        state: AppState
 ):
     try:
-        msg_data: Model_ChatWSMessageSend = Model_ChatWSMessageSend(**data.data)
+        msg_data: ChatMessageSend = ChatMessageSend(**data.data)
     except ValidationError:
         await ws.close(code=1008, reason="message.send INVALID_DATA")
         return
+
+    has_message: list | str = await state.db.messages.get_messages(
+        session.username, msg_data.recipient,
+        amount=1
+    )
+    match has_message:
+        case list() if not has_message:
+            pass
+        case list() if has_message:
+            return await ws_send_msg(
+                ws, data.message, {'error': "CHAT_NOT_RELATED"}
+            )
+        case "NO_RECIPIENT":
+            return await ws_send_msg(ws, data.message, {'error': has_message})
+        case _:
+            logger.error("Unexpected data when checking if has_message: %s", has_message)
+            return await ws.close(code=1011, reason="message.send SERVER_ERROR")
 
     result: str | int = await state.db.messages.store_message(
         session.username, msg_data.recipient,
@@ -160,8 +173,6 @@ async def websocket_message_send(
     match result:
         case 0:
             pass
-        case "NO_RECIPIENT":
-            return await ws_send_msg(ws, data.message, {'error': result})
         case _:
             logger.error("Unexpected data while storing message: %s", result)
             return await ws.close(code=1011, reason="message.send SERVER_ERROR")
