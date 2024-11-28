@@ -12,7 +12,6 @@ setup(
     author="NewGuy103",
     author_email="userchouenthusiast@gmail.com",
     install_requires=[
-        "msgpack",
         "mysql-connector-python",
         "fastapi",
         "argon2-cffi",

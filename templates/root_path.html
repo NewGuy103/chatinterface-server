@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/root_path.css') }}">
+    <script src="{{ url_for('static', path='/js/root_path.js') }}"></script>
+    <title>Chatinterface</title>
+</head>
+<body>
+    <header>
+        <div id="header-text-div">
+            <p id="header-text">Chatinterface Web Client</p>
+        </div>
+    </header>
+    <main>
+        <div class="sidebar-flex-column">
+            <div class="compose-message-box">
+                <button>Compose new message</button>
+            </div>
+            <div class="recipients" id="recipients"></div>
+        </div>
+        <div class="main-flex-column">
+            <div class="recipient-topbar">
+                <p class="topbar-recipient-username">{username}</p>
+            </div>
+            <div class="messages-box" id="messages-box">
+            </div>
+            <div class="send-box">
+                <form id="message-send-form">
+                    <input type="text" name="message" class="message-input" placeholder="Enter message" autocomplete="off">
+                    <button type="submit" class="message-send">Send</button>
+                </form>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

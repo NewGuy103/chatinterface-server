@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict
+from typing import NamedTuple
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from ..internal.database import MainDatabase
 from ..internal.config import ConfigManager
@@ -11,10 +13,10 @@ class SessionInfo(BaseModel):
     expired: bool
     token: str
 
-# not used for type validation, only type hint for development
-class AppState(BaseModel):
+
+# used for type hints when accessing app lifespan state
+class AppState(NamedTuple):
     db: MainDatabase
     config: ConfigManager
-    ws_clients: dict[str, 'ClientInfo']
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    ws_clients: dict[str, ClientInfo]
+    templates: Jinja2Templates

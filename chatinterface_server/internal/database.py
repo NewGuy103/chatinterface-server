@@ -12,6 +12,8 @@ from datetime import datetime
 from functools import wraps, partial
 from concurrent.futures import ThreadPoolExecutor
 
+from . import constants
+
 logger: logging.Logger = logging.getLogger("chatinterface.logger.database")
 
 
@@ -109,7 +111,7 @@ class MainDatabase:
 
                     expires_on TIMESTAMP,
                     created_at TIMESTAMP DEFAULT current_timestamp(),
-                    
+
                     CONSTRAINT `session-userID-exists-fk`
                         FOREIGN KEY (user_id) REFERENCES users (user_id)
                            ON DELETE CASCADE
@@ -136,6 +138,7 @@ class MainDatabase:
                 ) ENGINE = InnoDB;
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_send_date ON messages (send_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_message_id ON messages (message_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_user_id ON users (user_id);")
 
     def get_userid(self, username: str) -> str:
@@ -181,7 +184,7 @@ class UserMethods:
         
         user_data: str = self.get_userid(username)
         if user_data:
-            return "USER_EXISTS"
+            return constants.USER_EXISTS
 
         user_id: str = str(uuid.uuid4())
         hashed_pw: str = self.pw_hasher.hash(password)
@@ -212,16 +215,16 @@ class UserMethods:
             user_data: tuple[str] = cursor.fetchone()
 
         if not user_data:
-            return "NO_USER"
+            return constants.NO_USER
         
         hashed_pw: str = user_data[0]
         try:
             self.pw_hasher.verify(hashed_pw, password)
         except (argon2.exceptions.VerificationError, argon2.exceptions.VerifyMismatchError):
-            return "INVALID_TOKEN"
+            return constants.INVALID_TOKEN
         except Exception:
             logging.exception("[verify_user]: Argon2-cffi exception:")
-            return "EXCEPTION"
+            raise  # ideally fail
         
         return 0
 
@@ -232,19 +235,19 @@ class UserMethods:
         
         if not isinstance(expires_on, str):
             raise TypeError("expires_on is not a string")
-        
+
         try:
             expiry_date: datetime = datetime.strptime(expires_on, "%Y-%m-%d %H:%M:%S")
         except ValueError:
-            return "INVALID_DATETIME"
+            return constants.INVALID_DATETIME
 
         date_today: datetime = datetime.now()
         if date_today > expiry_date:
-            return "DATE_EXPIRED"
+            return constants.DATE_EXPIRED
 
         user_id: str = self.get_userid(username)
         if not user_id:
-            return "NO_USER"
+            return constants.NO_USER
 
         session_token: str = secrets.token_urlsafe(32)
         with transaction(self.db) as cursor:
@@ -268,7 +271,7 @@ class UserMethods:
         return bool(user)
 
     def get_sessions(self, username: str):
-        ...
+        raise NotImplementedError()
 
     @async_threaded
     def revoke_session(self, session_id: str) -> int | str:
@@ -280,7 +283,7 @@ class UserMethods:
             session_data: tuple[str] = cursor.fetchone()
 
             if not session_data:
-                return "INVALID_SESSION"
+                return constants.INVALID_SESSION
 
             cursor.execute("""
                 DELETE FROM user_sessions
@@ -303,7 +306,7 @@ class UserMethods:
             session_data: tuple[str] = cursor.fetchone()
 
             if not session_data:
-                return "INVALID_SESSION"
+                return constants.INVALID_SESSION
 
             user_id: str = session_data[0]
             cursor.execute("""
@@ -363,7 +366,7 @@ class ChatMethods:
 
         user_id: str = self.get_userid(username)
         if not user_id:
-            return "NO_USER"
+            return constants.NO_USER
         
         with transaction(self.db) as cursor:
             cursor.execute("""
@@ -399,7 +402,7 @@ class ChatMethods:
         return sender_names | recipient_names
 
     @async_threaded
-    def store_message(self, sender: str, recipient: str, message_data: str) -> str | int:
+    def store_message(self, sender: str, recipient: str, message_data: str) -> str:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
         
@@ -413,10 +416,10 @@ class ChatMethods:
         recipient_id: str = self.get_userid(recipient)
 
         if not sender_id:
-            return "NO_SENDER"
+            return constants.NO_SENDER
 
         if not recipient_id:
-            return "NO_RECIPIENT"
+            return constants.NO_RECIPIENT
 
         message_id: str = str(uuid.uuid4())
         with transaction(self.db) as cursor:
@@ -427,10 +430,10 @@ class ChatMethods:
                 ) VALUES (%s, %s, %s, %s)
             """, [message_id, sender_id, recipient_id, message_data])
 
-        return 0
+        return message_id
 
     @async_threaded
-    def get_messages(self, sender: str, recipient: str, amount: int = 100):
+    def get_messages(self, sender: str, recipient: str, amount: int = 100) -> str | list[tuple]:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
         
@@ -444,10 +447,41 @@ class ChatMethods:
         recipient_id: str = self.get_userid(recipient)
 
         if not sender_id:
-            return "NO_SENDER"
+            return constants.NO_SENDER
 
         if not recipient_id:
-            return "NO_RECIPIENT"
+            return constants.NO_RECIPIENT
+
+        with transaction(self.db) as cursor:
+            cursor.execute("""
+                SELECT (
+                    SELECT username FROM users
+                    WHERE users.user_id=messages.sender_id
+                ) AS sender_name, message_data, 
+                    DATE_FORMAT(send_date, "%y-%m-%d %h:%m:%S.%f"), message_id
+
+                FROM messages WHERE (sender_id = %s AND recipient_id = %s)
+                OR (sender_id = %s AND recipient_id = %s)
+
+                ORDER BY send_date DESC;
+            """, [sender_id, recipient_id, recipient_id, sender_id])
+            chat_data: list[tuple] = cursor.fetchmany(amount)
+            cursor.fetchall()  # discard the rest
+
+        return chat_data
+
+    @async_threaded
+    def get_message(self, sender: str, message_id: str):
+        if not isinstance(sender, str):
+            raise TypeError("sender username is not a string")
+
+        if not isinstance(message_id, str):
+            raise TypeError("message_id is not a string")
+
+
+        sender_id: str = self.get_userid(sender)
+        if not sender_id:
+            return constants.NO_SENDER
 
         with transaction(self.db) as cursor:
             cursor.execute("""
@@ -456,15 +490,82 @@ class ChatMethods:
                     WHERE users.user_id=messages.sender_id
                 ) AS sender_name, message_data, DATE_FORMAT(send_date, "%y-%m-%d %h:%m:%S.%f")
 
-                FROM messages WHERE (sender_id = %s AND recipient_id = %s)
-                OR (sender_id = %s AND recipient_id = %s)
+                FROM messages
+                WHERE message_id=%s AND sender_id=%s
+            """, [message_id, sender_id])
+            sender_data: tuple = cursor.fetchone()
 
-                ORDER BY send_date DESC;
-            """, [sender_id, recipient_id, recipient_id, sender_id])
-            chat_data: list[tuple[str, bytes, str]] = cursor.fetchmany(amount)
-            cursor.fetchall()  # discard the rest
+            if not sender_data:
+                return constants.INVALID_MESSAGE
 
-        return chat_data
+        return sender_data
+
+    @async_threaded
+    def delete_message(self, sender: str, message_id: str) -> str | int:
+        if not isinstance(sender, str):
+            raise TypeError("sender username is not a string")
+
+        if not isinstance(message_id, str):
+            raise TypeError("message_id is not a string")
+
+        sender_id: str = self.get_userid(sender)
+        if not sender_id:
+            return constants.NO_SENDER
+
+        with transaction(self.db) as cursor:
+            cursor.execute("SELECT sender_id FROM messages WHERE message_id=%s", [message_id])
+            sender_data: tuple[str] = cursor.fetchone()
+
+            if not sender_data:
+                return constants.INVALID_MESSAGE
+
+            saved_sender_id: str = sender_data[0]
+            if sender_id != saved_sender_id:
+                return constants.ID_MISMATCH
+            
+            cursor.execute("""
+                DELETE FROM messages
+                WHERE message_id=%s
+            """, [message_id])
+        
+        return 0
+
+    @async_threaded
+    def edit_message(self, sender: str, message_id: str, message_data: str) -> str | int:
+        if not isinstance(sender, str):
+            raise TypeError("sender username is not a string")
+
+        if not isinstance(message_id, str):
+            raise TypeError("message_id is not a string")
+
+        if not isinstance(message_data, str):
+            raise TypeError("message data is not a string")
+
+        if len(message_data) < 1:
+            raise ValueError("message data must not be empty")
+
+        sender_id: str = self.get_userid(sender)
+        if not sender_id:
+            return constants.NO_SENDER
+
+        with transaction(self.db) as cursor:
+            cursor.execute("SELECT sender_id FROM messages WHERE message_id=%s", [message_id])
+            sender_data: tuple[str] = cursor.fetchone()
+
+            if not sender_data:
+                return constants.INVALID_MESSAGE
+
+            saved_sender_id: str = sender_data[0]
+            if sender_id != saved_sender_id:
+                return constants.ID_MISMATCH
+
+            cursor.execute("""
+                UPDATE messages
+                SET message_data=%s
+                WHERE message_id=%s
+            """, [message_data, message_id])
+        
+        return 0
 
 
 if __name__ == "__main__":

@@ -1,127 +1,67 @@
 import asyncio
+import json
+from typing import Annotated
 import uuid
 import logging
-import msgpack
 
-from datetime import datetime
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from pydantic import ValidationError
 
 from ..models.common import SessionInfo, AppState
-from ..models.ws import ClientInfo, MessageData, ChatMessageSend
+from ..models.ws import ClientInfo, MessageData
+
+from ..dependencies import get_session_info_ws
 
 router: APIRouter = APIRouter(prefix="/ws", tags=['websocket'])
 logger: logging.Logger = logging.getLogger("chatinterface.logger.ws")
 
 
-async def ws_send_msg(ws: WebSocket, message: str, data: dict) -> bytes:
-    payload: str = {
-        'message': message,
-        'data': data
-    }
-    await ws.send_bytes(msgpack.packb(payload))
-
-
 @router.websocket("/chat")
-async def create_websocket(websocket: WebSocket):
+async def create_websocket(websocket: WebSocket, session: Annotated[SessionInfo, Depends(get_session_info_ws)]):
     state: AppState = websocket.state
     await websocket.accept()
 
-    try:
-        try:
-            auth_msg: bytes = await asyncio.wait_for(websocket.receive_bytes(), timeout=20)
-        except KeyError:
-            # Starlette's receive_bytes() uses dict['key'] directly, which means
-            # if I get a text frame, it ends up as a KeyError
-            await websocket.close(code=1003, reason="BINARY_ENDPOINT")
-            return
-
-    except asyncio.TimeoutError:
-        logger.warning("Waited for client to send authentication data, timed out")
-        await websocket.close(code=1008, reason="AUTH_TIMEOUT")
-        return
-    except WebSocketDisconnect as e:
-        code: int = e.code
-        reason: str | None = e.reason or None
-
-        logger.info(
-            "Client disconnected before sending authentication data [code: %d, reason: %s]",
-            code, reason
-        )
-        return
-    except Exception:  # noqa: catch all and return server error
-        logger.exception("Unexpected Exception when waiting for authentication data")
-        await websocket.close(code=1011, reason="SERVER_ERROR")
-
-        return
-
-    try:
-        auth_data: dict = msgpack.unpackb(auth_msg)
-    except Exception:
-        logger.warning("Client sent invalid MessagePack data during authentication")
-        await websocket.close(code=1003, reason="INVALID_MSGPACK")
-        return
-
-    # fail with invalid credentials intentionally
-    session_token: str = auth_data.get('session_token', '')
-    if not session_token or not isinstance(session_token, str):
-        await websocket.close(code=1008, reason="INVALID_CREDENTIALS")
-        return
-
-    session_valid: bool = await state.db.users.check_session_validity(session_token)
-    if not session_valid:
-        await websocket.close(code=1008, reason="INVALID_CREDENTIALS")
-        return
-    
-    session_info: SessionInfo = SessionInfo(**await state.db.users.get_session_info(session_token))
     client_id: str = str(uuid.uuid4())
-
     client_info_dict: dict[str, WebSocket | str] = {
         'ws': websocket,
         'ip': f"{websocket.client.host}:{websocket.client.port}",
-        'username': session_info.username,
-        'token': session_info.token
+        'username': session.username,
+        'token': session.token
     }
 
     client_info: ClientInfo = ClientInfo(**client_info_dict)
     state.ws_clients[client_id] = client_info
 
-    await websocket.send_bytes(msgpack.packb("OK"))
+    await websocket.send_json("OK")
     try:
         ws_authorized_logmsg: str = "WebSocket by user '%s' from IP '%s' authorized"
         logger.debug(ws_authorized_logmsg, client_info.username, client_info.ip)
 
         while True:
             try:
-                ws_message: bytes = await websocket.receive_bytes()
-            except KeyError:
-                # Starlette's receive_bytes() uses dict['key'] directly, which means
-                # if I get a text frame, it ends up as a KeyError
-                await websocket.close(code=1003, reason="BINARY_ENDPOINT")
+                ws_message: dict = await asyncio.wait_for(websocket.receive_json(), timeout=20)
+            except json.JSONDecodeError:
+                await websocket.close(code=1003, reason="INVALID_JSON")
                 return
 
-            try:
-                unpacked_data: dict = msgpack.unpackb(ws_message)
-            except Exception as e:
-                logger.warning("Client sent invalid MessagePack data as message", exc_info=e)
-                await websocket.close(code=1003, reason="INVALID_MSGPACK")
-                return
-
-            if not isinstance(unpacked_data, dict):
+            if not isinstance(ws_message, dict):
                 await websocket.close(code=1003, reason="INVALID_MSGPACK")
                 return
 
             try:
-                loaded_msg: MessageData = MessageData(**unpacked_data)
+                loaded_msg: MessageData = MessageData(**ws_message)  # noqa | disabled ws sending
             except ValidationError:
                 await websocket.close(code=1008, reason="INVALID_DATA")
                 return
 
-            match loaded_msg.message:
-                case "message.send":
-                    await websocket_message_send(websocket, loaded_msg, session_info, state)
-                case _:
-                    await websocket.close(code=1008, reason="INVALID_MESSAGE")
+            if loaded_msg.message == 'keepalive':
+                await websocket.send_json({
+                    'message': 'ALIVE',
+                    'data': {}
+                })
+                continue
+
+            await websocket.close(code=1008, reason="SEND_UNSUPPORTED")
     except WebSocketDisconnect as e:
         code: int = e.code
 
@@ -136,63 +76,3 @@ async def create_websocket(websocket: WebSocket):
         logger.exception("Unexpected Exception during WebSocket connection:")
     finally:
         del state.ws_clients[client_id]
-
-
-async def websocket_message_send(
-        ws: WebSocket, data: MessageData,
-        session: SessionInfo,
-        state: AppState
-):
-    try:
-        msg_data: ChatMessageSend = ChatMessageSend(**data.data)
-    except ValidationError:
-        await ws.close(code=1008, reason="message.send INVALID_DATA")
-        return
-
-    has_message: list | str = await state.db.messages.get_messages(
-        session.username, msg_data.recipient,
-        amount=1
-    )
-    match has_message:
-        case list() if not has_message:
-            pass
-        case list() if has_message:
-            return await ws_send_msg(
-                ws, data.message, {'error': "CHAT_NOT_RELATED"}
-            )
-        case "NO_RECIPIENT":
-            return await ws_send_msg(ws, data.message, {'error': has_message})
-        case _:
-            logger.error("Unexpected data when checking if has_message: %s", has_message)
-            return await ws.close(code=1011, reason="message.send SERVER_ERROR")
-
-    result: str | int = await state.db.messages.store_message(
-        session.username, msg_data.recipient,
-        msg_data.data
-    )
-    match result:
-        case 0:
-            pass
-        case _:
-            logger.error("Unexpected data while storing message: %s", result)
-            return await ws.close(code=1011, reason="message.send SERVER_ERROR")
-
-    current_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-    recipient_payload: dict = {
-        'sender': session.username,
-        'data': msg_data.data,
-        'timestamp': current_time
-    }
-    for client_info in state.ws_clients.values():
-        if client_info.username != msg_data.recipient:
-            continue
-
-        recipient_ws: WebSocket = client_info.ws
-        await ws_send_msg(recipient_ws, "message.received", recipient_payload)
-
-    success_payload: dict = {
-        'id': msg_data.id,
-        'recipient': msg_data.recipient,
-        'timestamp': current_time
-    }
-    await ws_send_msg(ws, "message.completed", success_payload)

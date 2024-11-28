@@ -1,59 +1,87 @@
-# Replace models.py with models/ directory
+# Add HTML frontend and multiple new features
 
 **Version**: v0.1.0
 
-**Date:** 18/10/2024
+**Date:** 28/11/2024
 
 ## Additions
 
-**`.dockerignore`**:
+**`main.py`**:
 
-* Created `.dockerignore` file.
+* Added templating for HTML frontend.
+* Added static files route under `/static`.
+* Added title, version and license info to FastAPI metadata.
+* Added an API router to prefix all API routes with `/api`.
+* Add root path `/` which redirects to `/frontend/`
 
-**`docker/Dockerfile`**:
+**`dependencies.py`**:
 
-* Created Dockerfile for containerization.
+* Created `login_required()` dependency used by `/frontend/` to redirect to a login page if no credentials were found.
 
-**`models/`**:
+**`internal/database.by`**:
 
-* Created `models/` subdirectory to store pydantic models in an organized way.
+* Create index `idx_messages_message_id` which indexes message IDs.
+
+**`models/chats.py`**:
+
+* Create `SendMessage`, `EditMessage` and `DeleteMessage` pydantic models.
 
 **`routers/chats.py`**:
 
-* Added `/chats/compose_message` route to replace the implicit message compose happening in the WebSocket connection.
+* Create `/send_message` route to replace Websocket message sending, and returns a message ID.
+* Create `/get_message/{message_id}` to get an message with a specific message ID.
+* Create `/edit_message/{message_id}` and `/delete_message/{message_id}` (unfinished).
 
-**`main.py`**:
+**`routers/frontend.py`**:
 
-* Added logging.
+* Create `/frontend/` and `/frontend/login` to serve HTML files.
 
 ## Changes
 
-**`models.py`**:
+**`main.py`**:
 
-* Deleted `models.py` in favor of `models/` subdirectory.
+* Changed app lifespan state to use a plain dictionary.
 
-**`internal/config.py`**:
+**`OPEN_SOURCE_LICENSES.md`**:
 
-* Removed `ConfigMaker.create_database_config()` and `ConfigManager.get_database_config()` as
-  database is now configured through environment variables.
-* `ConfigMaker.create_logging_config()` now enables console logging by default.
-* Changed `ConfigManager` to create the directory if it doesn't exist instead of raising an error.
+* Removed `msgpack` attribution as it is no longer a dependency.
 
-**`internal/database.py`**:
+**`requirements.in | requirements.txt`**:
 
-* Changed `MainDatabase` to take in the configuration directly instead of taking in a dictionary
-  for both database and executor config.
-* Max thread pool workers is now equal to the pool size of the database.
+* Removed `msgpack` as a dependency.
+
+**`dependencies.py`**:
+
+* Changed `get_session_info()` to require a cookie instead of a header.
+
+**`internal/database.by`**:
+
+* Changed return values to use constants instead.
+
+**`models/common.py`**:
+
+* Change `AppState` from a pydantic model to a `NamedTuple` for type hinting.
+
+**`routers/auth.py`**:
+
+* Change `retrieve_token()` to `cookie_login()` and sets a cookie instead of directly giving the token.
+
+**`routers/chats.py`**:
+
+* Change `retrieve_token()` to `cookie_login()` and sets a cookie instead of directly giving the token.
 
 **`routers/ws.py`**:
 
-* Changed `/ws/chat` `message.send` message to return an error if attempting to
-  send a chat to a recipient without first composing a message.
+* Changed authentication to use the `get_session_info_ws()` dependency instead of having it
+  send the session token in the first message.
+* Websocket now sends data as JSON.
+* Disabled receiving messages, will now close the connection if messages are sent to it.
+* Removed the ability to send chat messages in Websocket.
 
-**`main.py`**:
+**`docker/Dockerfile`**:
 
-* `load_database()` now gets the database credentials from environment variables.
+* Now copies `/static` and `/templates` to `/app`.
 
 ## Misc
 
-* Replaced all imports of `models.py` to import the `models/` subdirectory.
+* Most routers that check for a constant string now use the `constants` submodule in the app.

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/login_path.css') }}">
+    <script src="{{ url_for('static', path='/js/login_path.js') }}"></script>
+    <title>Chatinterface Login</title>
+</head>
+<body>
+    <main>
+        <h2>Chatinterface Login</h3>
+        <form id="login-form" class="login-form">
+            <input type="text" name="username" placeholder="Enter username" required>
+            <input type="password" name="password" placeholder="Enter password" required>
+            <button type="submit">Login</button>
+        </form>
+        <p id="login-response-status"></p>
+    </main>
+</body>
+</html>

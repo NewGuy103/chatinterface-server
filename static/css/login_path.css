@@ -1,0 +1,30 @@
+body {
+    font-family: Arial, Helvetica, sans-serif;
+}
+main {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 650px;
+    flex-direction: column;
+}
+
+.login-form {
+    border: 1px solid grey;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    gap: 10px;
+}
+.login-form input {
+    height: 40px;
+    width: 300px;
+    border: 2px solid grey;
+    font-size: 16px;
+}
+.login-form button {
+    height: 40px;
+    width: 100%;
+    border: 2px solid grey;
+    font-size: 16px;
+}

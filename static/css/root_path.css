@@ -1,0 +1,150 @@
+body {
+    background-color: aliceblue;
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0%;
+    height: 93.25vh;
+}
+
+header {
+    width: auto;
+    height: 50px;
+
+    background-color: white;
+    margin: auto;
+
+    border-style: solid;
+    border-width: 2px;
+
+    border-color: grey;
+    border-bottom: 0px;
+    display: grid;
+
+    background-color: white;
+    grid-auto-flow: column;
+}
+main {
+    display: flex;
+    align-items: flex-start;
+    height: 100%;
+}
+
+#header-text-div {
+    padding-left: 20px;
+}
+#header-text {
+    color: black;
+}
+
+.sidebar-flex-column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.main-flex-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+}
+.compose-message-box {
+    border: 2px solid grey;
+    border-bottom: 0px;
+    display: flex;
+    justify-content: center;
+    padding: 5px;
+    flex: 1;
+}
+.recipients {
+    width: 272.5px;
+    height: 88.8vh;
+    border: 2px solid grey;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+}
+.recipient-item {
+    width: 17vw;
+    height: min-content;
+
+    max-width: 90%;
+    border: 2px solid grey;
+
+    padding: 3px;
+    margin-bottom: 10px;
+
+    overflow-wrap: break-word;
+}
+.recipient-item:hover {
+    background-color: lightgray;
+    cursor: pointer;
+}
+.recipient-topbar {
+    width: 77.4vw;
+    height: 8vh;
+    border: 2px solid grey;
+    border-left: 0px;
+}
+.topbar-recipient-username  {
+    padding: 7px;
+    padding-left: 10px;
+}
+.recipient-username {
+    padding-left: 10px;
+}
+.messages-box {
+    min-width: 90px;
+    max-width: 100%;
+
+    width: 76.7vw;
+    border: 2px solid grey;
+
+    border-top: 0px;
+    border-left: 0px;
+
+    display: flex;
+    flex-basis: 100%;
+
+    padding-top: 10px;
+    padding-left: 10px;
+
+    position: relative;
+    flex: 1;
+
+    flex-direction: column;
+    overflow-y: scroll;
+
+    overflow-wrap: break-word;
+}   
+.message-item {
+    position: relative;
+    overflow-wrap: break-word;
+}
+.send-box {
+    border: 2px solid grey;
+    border-top: 0px;
+
+    border-left: 0px;
+    padding: 10px;
+}
+.message-input {
+    width: 94.7%;
+}
+.message-text {
+    width: max-content;
+    border: 3.5px solid grey;
+
+    border-radius: 10px;
+    padding: 5px;
+
+    margin-top: 0;
+    position: relative;
+
+    overflow-wrap: break-word;
+    display: inline-block;
+
+    max-width: 97.5%;
+}
+.message-username {
+    font-size: 14px;
+    margin: 0;
+}

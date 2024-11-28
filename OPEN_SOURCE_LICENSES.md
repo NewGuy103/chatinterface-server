@@ -16,13 +16,6 @@ This project uses the open source dependencies:
 - **Attribution**: Copyright (c) 2018 Sebastián Ramírez
 - **Source Code**: [fastapi on GitHub](https://github.com/tiangolo/fastapi)
 
-## msgpack
-
-- **License**: Apache 2.0
-- **License Text**: [Apache 2.0 License](LICENSES/apache-2.0.txt)
-- **Attribution**: Copyright (c) 2008-2011 INADA Naoki <songofacandy@gmail.com>
-- **Source Code**: [msgpack-python on GitHub](https://github.com/msgpack/msgpack-python)
-
 ## argon2-cffi
 
 - **License**: MIT
