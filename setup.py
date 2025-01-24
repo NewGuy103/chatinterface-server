@@ -12,10 +12,13 @@ setup(
     author="NewGuy103",
     author_email="userchouenthusiast@gmail.com",
     install_requires=[
-        "mysql-connector-python",
-        "fastapi",
+        "mariadb",
+        "fastapi[standard]",
         "argon2-cffi",
+        "sqlmodel",
+        "uvicorn[standard]",
+        "pydantic-settings"
     ],
-    license="GPL v2.0",
+    license="MPL 2.0",
     packages=find_packages()
 )

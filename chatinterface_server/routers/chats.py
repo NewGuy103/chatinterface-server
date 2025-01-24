@@ -3,11 +3,11 @@ import logging
 
 from typing import Annotated
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Request, Query, WebSocket
+from fastapi import APIRouter, HTTPException, Request, Query, WebSocket
 
-from ..models.common import SessionInfo, AppState
+from ..models.common import AppState
 from ..models.chats import ComposeMessage, EditMessage, SendMessage
-from ..dependencies import get_session_info
+from ..dependencies import HttpAuthDep
 from ..internal import constants
 
 router = APIRouter(prefix="/chats", tags=['chats'])
@@ -16,7 +16,7 @@ logger: logging.Logger = logging.getLogger("chatinterface.logger.ws")
 
 @router.get("/recipients")
 async def get_previous_chats(
-    session: Annotated[SessionInfo, Depends(get_session_info)],
+    session: HttpAuthDep,
     req: Request
 ) -> set[str]:
     state: AppState = req.state
@@ -27,10 +27,10 @@ async def get_previous_chats(
 @router.get("/messages")
 async def get_previous_messages(
     req: Request,
+    session: HttpAuthDep,
     recipient: Annotated[str, Query(description="Recipient username", max_length=20, strict=True)],
 
-    amount: int = Query(100, description="Amount of messages to fetch (fetches latest messages)"),
-    session: Annotated[SessionInfo, Depends(get_session_info)] = None
+    amount: int = Query(100, description="Amount of messages to fetch (fetches latest messages)")
 ) -> list[tuple[str, bytes, str, str]]:
     state: AppState = req.state
     result: list[tuple] | str = await state.db.messages.get_messages(
@@ -52,7 +52,7 @@ async def get_previous_messages(
 async def check_user_exists(
     req: Request,
     username: Annotated[str, Query(description="Username to check", max_length=20, strict=True)],
-    session: Annotated[SessionInfo, Depends(get_session_info)]
+    session: HttpAuthDep
 ) -> bool:
     state: AppState = req.state
     user_exists: bool = await state.db.users.check_user_exists(username)
@@ -63,7 +63,7 @@ async def check_user_exists(
 async def send_message(
     data: SendMessage,
     req: Request,
-    session: Annotated[SessionInfo, Depends(get_session_info)]
+    session: HttpAuthDep
 ) -> str:
     state: AppState = req.state
     has_message: list | str = await state.db.messages.get_messages(
@@ -121,7 +121,7 @@ async def send_message(
 async def compose_new_message(
     data: ComposeMessage,
     req: Request,
-    session: Annotated[SessionInfo, Depends(get_session_info)]
+    session: HttpAuthDep
 ):
     state: AppState = req.state
     if data.recipient == session.username:
@@ -152,7 +152,7 @@ async def compose_new_message(
 async def get_message(
     message_id: str, 
     req: Request, 
-    session: Annotated[SessionInfo, Depends(get_session_info)]
+    session: HttpAuthDep
 ):
     state: AppState = req.state
     message_data: str | tuple = await state.db.messages.get_message(session.username, message_id)
@@ -173,7 +173,7 @@ async def get_message(
 async def delete_message(
     message_id: str,
     req: Request,
-    session: Annotated[SessionInfo, Depends(get_session_info)]
+    session: HttpAuthDep
 ) -> int:
     state: AppState = req.state
     delete_result: str | int = await state.db.messages.delete_message(session.username, message_id)
@@ -195,7 +195,7 @@ async def edit_message(
     message_id: str,
     message_data: EditMessage,
     req: Request,
-    session: Annotated[SessionInfo, Depends(get_session_info)],
+    session: HttpAuthDep
 ) -> int:
     state: AppState = req.state
     edit_result: str | int = await state.db.messages.edit_message(

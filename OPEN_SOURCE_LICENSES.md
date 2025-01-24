@@ -2,12 +2,12 @@
 
 This project uses the open source dependencies:
 
-## mysql-connector-python
+## mariadb
 
-- **License**: GPL v2.0
-- **License Text**: [GPL v2.0](LICENSES/gpl-2.0.txt)
-- **Attribution**: Copyright (c) 2012, 2024, Oracle and/or its affiliates.
-- **Source Code**: [mysql-connector-python on GitHub](https://github.com/mysql/mysql-connector-python)
+- **License**: LGPL v2.1 or later
+- **License Text**: [LGPL-v2.1-or-later](LICENSES/lgpl-2.1-or-later.txt)
+- **Attribution**: Copyright (c) 2019-2024 MariaDB Corporation and Georg Richter.
+- **Source Code**: [mariadb on GitHub](https://github.com/mariadb-corporation/mariadb-connector-python)
 
 ## fastapi
 
@@ -29,3 +29,17 @@ This project uses the open source dependencies:
 - **License Text**: [MIT License](LICENSES/mit.txt)
 - **Attribution**: Copyright (c) 2017 to present Pydantic Services Inc. and individual contributors.
 - **Source Code**: [pydantic on GitHub](https://github.com/pydantic/pydantic)
+
+## pydantic-settings
+
+- **License**: MIT
+- **License Text**: [MIT License](LICENSES/mit.txt)
+- **Attribution**: Copyright (c) 2022 Samuel Colvin and other contributors
+- **Source Code**: [pydantic on GitHub](https://github.com/pydantic/pydantic)
+
+## sqlmodel
+
+- **License**: MIT
+- **License Text**: [MIT License](LICENSES/mit.txt)
+- **Attribution**: Copyright (c) 2021 Sebastián Ramírez
+- **Source Code**: [sqlmodel on GitHub](https://github.com/fastapi/sqlmodel)

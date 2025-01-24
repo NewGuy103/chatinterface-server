@@ -1,7 +1,8 @@
 from fastapi.responses import RedirectResponse
-from .models.common import SessionInfo, AppState
-from fastapi import Cookie, Request, HTTPException, WebSocket
+from fastapi import Cookie, Depends, Request, HTTPException, WebSocket
 from typing import Annotated
+
+from .models.common import SessionInfo, AppState
 
 
 async def get_session_info(authorization: Annotated[str, Cookie()], request: Request) -> SessionInfo:
@@ -44,3 +45,7 @@ async def login_required(
 
     session_info: dict[str, str | bool] = await state.db.users.get_session_info(authorization)
     return SessionInfo(**session_info)
+
+
+HttpAuthDep = Annotated[SessionInfo, Depends(get_session_info)]
+SessionOrRedirectDep = Annotated[SessionInfo | RedirectResponse, Depends(login_required)]

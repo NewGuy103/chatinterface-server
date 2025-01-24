@@ -3,49 +3,19 @@ import secrets
 import logging
 import uuid
 
-import mysql.connector
-import mysql.connector.cursor
 import argon2  # argon2-cffi
 
-from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps, partial
 from concurrent.futures import ThreadPoolExecutor
+from sqlmodel import SQLModel, Session, select
+from sqlalchemy import Engine
 
 from . import constants
+from ..models.dbtables import Users, UserSessions
+from .config import settings
 
 logger: logging.Logger = logging.getLogger("chatinterface.logger.database")
-
-
-@contextmanager
-def transaction(pool: mysql.connector.pooling.MySQLConnectionPool):
-    try:
-        # Type is set to a normal connection for autocomplete purposes
-        conn: mysql.connector.MySQLConnection = pool.get_connection()
-        logger.debug("Connection from pool acquired")
-    except mysql.connector.PoolError:
-        logger.exception("Could not get connection from MySQL pool:")
-        raise
-
-    try:
-        cursor: mysql.connector.cursor.MySQLCursor = conn.cursor()
-        cursor.execute("START TRANSACTION;")
-
-        logger.debug("Transaction started, yielding cursor to caller")
-        yield cursor
-
-        conn.commit()
-        logger.debug("Transaction committed")
-    except mysql.connector.Error:
-        logger.exception("MySQL transaction failed:")
-        conn.rollback()
-
-        raise
-    finally:
-        cursor.close()
-        conn.close()
-
-        logger.debug("Connection and cursor closed")
 
 
 def async_threaded(func):
@@ -63,96 +33,49 @@ def async_threaded(func):
 
 
 class MainDatabase:
-    def __init__(
-            self, host: str, 
-            port: int = 3306,
-            db_name: str = 'chatinterface_server',
-            db_user: str = 'chatinterface_server',
-            db_password: str = '',
-            pool_size: int = 10
-    ) -> None:
+    def __init__(self, engine: Engine) -> None:
         self.__closed: bool = False
-        self.dbconfig: dict = {
-            'host': host,
-            'port': port,
-            'db': db_name,
-            'user': db_user,
-            'password': db_password,
-            'pool_size': pool_size,
-            'pool_name': 'chatinterface_server-mysql-pool',
-            'pool_reset_session': True
-        }
+        self.engine: Engine = engine
 
         self.pw_hasher: argon2.PasswordHasher = argon2.PasswordHasher()
-        self.executor: ThreadPoolExecutor = ThreadPoolExecutor(
-            max_workers=pool_size, 
-            thread_name_prefix="chatinterface_server-mysql-thread-"
-        )
+        self.executor: ThreadPoolExecutor = ThreadPoolExecutor()
 
     @async_threaded
     def setup(self):
-        self.pool = mysql.connector.pooling.MySQLConnectionPool(**self.dbconfig)
+        SQLModel.metadata.create_all(self.engine)
+
+        statement = select(Users).where(Users.username == settings.FIRST_USER_NAME)
+        with Session(self.engine) as session:
+            result = session.exec(statement)
+
+            if not result.one_or_none():
+                user_id: uuid.UUID = uuid.uuid4()
+                hashed_pw: str = self.pw_hasher.hash(settings.FIRST_USER_PASSWORD)
+                first_user: Users = Users(
+                    user_id=user_id, 
+                    username=settings.FIRST_USER_NAME, 
+                    hashed_password=hashed_pw
+                )
+
+                session.add(first_user)
+                session.commit()
+            
         self.messages = ChatMethods(self)
-
         self.users = UserMethods(self)
-        with transaction(self.pool) as cursor:
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id UUID PRIMARY KEY,
-                    username VARCHAR(20) NOT NULL UNIQUE,
-                    
-                    hashed_password VARCHAR(100) NOT NULL
-                ) ENGINE = InnoDB;
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS user_sessions (
-                    session_id VARCHAR(45) PRIMARY KEY,
-                    user_id UUID,
-
-                    expires_on TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT current_timestamp(),
-
-                    CONSTRAINT `session-userID-exists-fk`
-                        FOREIGN KEY (user_id) REFERENCES users (user_id)
-                           ON DELETE CASCADE
-                           ON UPDATE RESTRICT
-                ) ENGINE = InnoDB;
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS messages (
-                    message_id UUID PRIMARY KEY,
-                    sender_id UUID,
-
-                    recipient_id UUID,
-                    message_data TEXT,
-
-                    send_date TIMESTAMP(6) NOT NULL DEFAULT current_timestamp(),
-                    CONSTRAINT `message-senderID-fk`
-                        FOREIGN KEY (sender_id) REFERENCES users (user_id)
-                            ON DELETE CASCADE
-                            ON UPDATE RESTRICT,
-                    CONSTRAINT `message-recipientID-fk`
-                        FOREIGN KEY (recipient_id) REFERENCES users (user_id)
-                           ON DELETE CASCADE
-                           ON UPDATE RESTRICT
-                ) ENGINE = InnoDB;
-            """)
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_send_date ON messages (send_date);")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_message_id ON messages (message_id);")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_user_id ON users (user_id);")
 
     def get_userid(self, username: str) -> str:
         if not isinstance(username, str):
             raise TypeError("username is not a string")
 
-        with transaction(self.pool) as cursor:
-            cursor.execute("SELECT user_id FROM users WHERE username=%s", [username])
-            user_data: tuple[str] = cursor.fetchone()
+        statement = select(Users).where(Users.username == username)
+        with Session(self.engine) as session:
+            result = session.exec(statement)
+            user: Users | None = result.one_or_none()
 
-        if not user_data:
+        if not user:
             return ''
 
-        return user_data[0]
+        return user.user_id
     
     def close(self):
         if self.__closed:
@@ -164,7 +87,7 @@ class MainDatabase:
 class UserMethods:
     def __init__(self, parent: MainDatabase) -> None:
         self.parent: MainDatabase = parent
-        self.db = parent.pool
+        self.engine = parent.engine
 
         self.pw_hasher = parent.pw_hasher
         self.get_userid = parent.get_userid
@@ -186,16 +109,12 @@ class UserMethods:
         if user_data:
             return constants.USER_EXISTS
 
-        user_id: str = str(uuid.uuid4())
         hashed_pw: str = self.pw_hasher.hash(password)
+        new_user: Users = Users(username=username, hashed_password=hashed_pw)
 
-        with transaction(self.db) as cursor:
-            cursor.execute("""
-                INSERT INTO users (
-                    user_id, username,
-                    hashed_password
-                ) VALUES (%s, %s, %s)
-            """, [user_id, username, hashed_pw])
+        with Session(self.engine) as session:
+            session.add(new_user)
+            session.commit()
 
         return 0
 
@@ -207,19 +126,16 @@ class UserMethods:
         if not isinstance(password, str):
             raise TypeError("password is not a string")
         
-        with transaction(self.db) as cursor:
-            cursor.execute("""
-                SELECT hashed_password FROM users
-                WHERE username=%s
-            """, [username])
-            user_data: tuple[str] = cursor.fetchone()
+        statement = select(Users).where(Users.username == username)
+        with Session(self.engine) as session:
+            result = session.exec(statement)
+            user: Users | None = result.one_or_none()
 
-        if not user_data:
+        if not user:
             return constants.NO_USER
         
-        hashed_pw: str = user_data[0]
         try:
-            self.pw_hasher.verify(hashed_pw, password)
+            self.pw_hasher.verify(user.hashed_password, password)
         except (argon2.exceptions.VerificationError, argon2.exceptions.VerifyMismatchError):
             return constants.INVALID_TOKEN
         except Exception:
@@ -250,12 +166,15 @@ class UserMethods:
             return constants.NO_USER
 
         session_token: str = secrets.token_urlsafe(32)
-        with transaction(self.db) as cursor:
-            cursor.execute("""
-                INSERT INTO user_sessions (
-                    session_id, user_id, expires_on
-                ) VALUES (%s, %s, %s)
-            """, [session_token, user_id, expires_on])
+        new_session: UserSessions = UserSessions(
+            session_id=session_token,
+            user_id=user_id, 
+            expires_on=expires_on
+        )
+
+        with Session(self.engine) as session:
+            session.add(new_session)
+            session.commit()
 
         return session_token
 
@@ -263,12 +182,16 @@ class UserMethods:
     def check_user_exists(self, username: str) -> bool:
         if not isinstance(username, str):
             raise TypeError("username is not a string")
-        
-        with transaction(self.db) as cursor:
-            cursor.execute("SELECT username FROM users WHERE username=%s", [username])
-            user: tuple[str] = cursor.fetchone()
-        
-        return bool(user)
+
+        statement = select(Users).where(Users.username == username)
+        with Session(self.engine) as session:
+            result = session.exec(statement)
+            user: Users = result.one_or_none()
+
+        if user is not None:
+            return True
+
+        return False
 
     def get_sessions(self, username: str):
         raise NotImplementedError()
@@ -278,18 +201,17 @@ class UserMethods:
         if not isinstance(session_id, str):
             raise TypeError("session ID is not a string")
 
-        with transaction(self.db) as cursor:
-            cursor.execute("SELECT expires_on FROM user_sessions WHERE session_id=%s", [session_id])
-            session_data: tuple[str] = cursor.fetchone()
+        statement = select(UserSessions).where(UserSessions.session_id == session_id)
+        with Session(self.engine) as session:
+            result = session.exec(statement)
+            user_session: UserSessions = result.one_or_none()
 
-            if not session_data:
+            if not user_session:
                 return constants.INVALID_SESSION
 
-            cursor.execute("""
-                DELETE FROM user_sessions
-                WHERE session_id=%s
-            """, [session_id])
-        
+            session.delete(user_session)
+            session.commit()
+
         return 0
 
     @async_threaded
@@ -297,35 +219,27 @@ class UserMethods:
         if not isinstance(session_id, str):
             raise TypeError("session id is not a string")
 
-        with transaction(self.db) as cursor:
-            cursor.execute("""
-                SELECT user_id, created_at, expires_on
-                FROM user_sessions
-                WHERE session_id=%s
-            """, [session_id])
-            session_data: tuple[str] = cursor.fetchone()
+        with Session(self.engine) as session:
+            session_statement = select(UserSessions).where(UserSessions.session_id == session_id)
 
-            if not session_data:
+            usersession_result = session.exec(session_statement)
+            user_session: UserSessions | None = usersession_result.one_or_none()
+
+            if not user_session:
                 return constants.INVALID_SESSION
 
-            user_id: str = session_data[0]
-            cursor.execute("""
-                SELECT username FROM users
-                WHERE user_id=%s
-            """, [user_id])
+            user_statement = select(Users).where(Users.user_id == user_session.user_id)
+            users_result = session.exec(user_statement)
 
-            username: str = cursor.fetchone()[0]
-        
-        created_at: str = session_data[1]
-        expiry_date: str = session_data[2]
+            user: Users = users_result.one()
 
         current_date: datetime = datetime.now()
-        expired: bool = expiry_date > current_date
+        expired: bool = user_session.expires_on > current_date
 
         return {
-            'created_at': datetime.strftime(created_at, "%Y-%m-%d %H:%M:%S"),
+            'created_at': datetime.strftime(user_session.created_at, "%Y-%m-%d %H:%M:%S"),
             'expired': expired,
-            'username': username,
+            'username': user.username,
             'token': session_id
         }
 
@@ -334,14 +248,15 @@ class UserMethods:
         if not isinstance(session_id, str):
             raise TypeError("session id is not a string")
 
-        with transaction(self.db) as cursor:
-            cursor.execute("SELECT expires_on FROM user_sessions WHERE session_id=%s", [session_id])
-            session_data: tuple[str] = cursor.fetchone()
-        
-        if not session_data:
+        statement = select(UserSessions).where(UserSessions.session_id == session_id)
+        with Session(self.engine) as session:
+            result = session.exec(statement)
+            user_session: UserSessions = result.one_or_none()
+
+        if not user_session:
             return False
 
-        expiry_date: str = session_data[0]
+        expiry_date: datetime = user_session.expires_on
         current_date: datetime = datetime.now()
 
         expired: bool = expiry_date > current_date
@@ -351,7 +266,7 @@ class UserMethods:
 class ChatMethods:
     def __init__(self, parent: MainDatabase) -> None:
         self.parent: MainDatabase = parent
-        self.db = parent.pool
+        self.engine = parent.engine
 
         self.executor = parent.executor
         self.get_userid = parent.get_userid
@@ -368,7 +283,7 @@ class ChatMethods:
         if not user_id:
             return constants.NO_USER
         
-        with transaction(self.db) as cursor:
+        with Session(self.engine) as session:
             cursor.execute("""
                 SELECT DISTINCT recipient_id FROM messages 
                 WHERE sender_id=%s
@@ -422,7 +337,7 @@ class ChatMethods:
             return constants.NO_RECIPIENT
 
         message_id: str = str(uuid.uuid4())
-        with transaction(self.db) as cursor:
+        with Session(self.engine) as session:
             cursor.execute("""
                 INSERT INTO messages (
                     message_id, sender_id, recipient_id,
@@ -452,7 +367,7 @@ class ChatMethods:
         if not recipient_id:
             return constants.NO_RECIPIENT
 
-        with transaction(self.db) as cursor:
+        with Session(self.engine) as session:
             cursor.execute("""
                 SELECT (
                     SELECT username FROM users
@@ -483,7 +398,7 @@ class ChatMethods:
         if not sender_id:
             return constants.NO_SENDER
 
-        with transaction(self.db) as cursor:
+        with Session(self.engine) as session:
             cursor.execute("""
                 SELECT (
                     SELECT username FROM users
@@ -512,7 +427,7 @@ class ChatMethods:
         if not sender_id:
             return constants.NO_SENDER
 
-        with transaction(self.db) as cursor:
+        with Session(self.engine) as session:
             cursor.execute("SELECT sender_id FROM messages WHERE message_id=%s", [message_id])
             sender_data: tuple[str] = cursor.fetchone()
 
@@ -548,7 +463,7 @@ class ChatMethods:
         if not sender_id:
             return constants.NO_SENDER
 
-        with transaction(self.db) as cursor:
+        with Session(self.engine) as session:
             cursor.execute("SELECT sender_id FROM messages WHERE message_id=%s", [message_id])
             sender_data: tuple[str] = cursor.fetchone()
 

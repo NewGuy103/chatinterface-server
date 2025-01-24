@@ -1,4 +1,6 @@
-mysql-connector-python
+mariadb
+sqlmodel
 fastapi[standard]
 uvicorn[standard]
 argon2-cffi
+pydantic-settings

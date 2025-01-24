@@ -2,11 +2,11 @@ import logging
 from typing import Annotated
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, WebSocket
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 
-from ..models.common import AppState, SessionInfo
-from ..dependencies import get_session_info
+from ..models.common import AppState
+from ..dependencies import HttpAuthDep
 
 from ..internal import constants
 
@@ -51,7 +51,7 @@ async def cookie_login(
 
 @router.post("/revoke")
 async def revoke_token(
-    session: Annotated[SessionInfo, Depends(get_session_info)],
+    session: HttpAuthDep,
     req: Request
 ) -> dict:
     state: AppState = req.state
@@ -60,26 +60,12 @@ async def revoke_token(
     if del_result == constants.INVALID_SESSION:
         raise HTTPException(status_code=401, detail="Session token invalid")
 
-    ws_clients_copy: dict = state.ws_clients.copy()
-    for c_id, c_dict in ws_clients_copy.items():
-        if not state.ws_clients.get(c_id):
-            # client might disconnect right before session revoke,
-            # not taking any chances and skipping that client
-            continue
-
-        token: str = c_dict['token']
-        ws: WebSocket = c_dict['ws']
-
-        if token == session.token:
-            ip: str = c_dict['ip']
-            logger.info("Disconnected client [%s] due to expired session token", ip)
-            await ws.close(code=1008, reason="SESSION_EXPIRED")
-
+    # Add handlers to disconnect websocket...
     return {'success': True}
 
 
 @router.get("/info")
-async def info_token(session: Annotated[SessionInfo, Depends(get_session_info)]) -> dict[str, str]:
+async def info_token(session: HttpAuthDep) -> dict[str, str]:
     token_data: dict = {
         'username': session.username,
         'created_at': session.created_at

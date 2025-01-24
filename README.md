@@ -10,7 +10,7 @@ Python 3.10+
 
 ## Installation
 
-`pip install newguy103-chatinterface-server`
+`pip install newguy103-chatinterface-server` (Note: Not yet fully ready on PyPI)
 
 This will install the necessary dependencies, and the app itself as `chatinterface_server`.
 
@@ -40,13 +40,9 @@ You can also pass command-line arguments to `uvicorn`.
 
 ## Disclaimer
 
-This project uses the MySQL Python Connector, which is licensed under the GPLv2.0, you can
-find the source code [here](https://github.com/mysql/mysql-connector-python).
+This project is licensed under the Mozilla Public License 2.0.
 
 Open source license attributions can be found in [OPEN_SOURCE_LICENSES.md](OPEN_SOURCE_LICENSES.md)
-
-This project is licensed under the GPLv2.0, as per license terms.
-For more details, you can refer to the [GNU General Public License v2.0](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html).
 
 ## Version
 

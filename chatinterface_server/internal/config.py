@@ -2,11 +2,44 @@ import os
 import json
 import logging.config
 
+from pydantic import computed_field, MariaDBDsn
+from pydantic_core import MultiHostUrl
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from ..version import __version__
 
 APP_NAME: str = "chatinterface-server"
 DEFAULT_MAIN_CONFIG: dict = {}  # will use soon
 DEFAULT_APP_DIR: str = os.path.join("/", "opt", APP_NAME)
+
+
+class AppSettings(BaseSettings):
+    model_config = SettingsConfigDict()
+
+    MARIADB_HOST: str = '127.0.0.1'
+    MARIADB_PORT: int = 3306
+
+    MARIADB_DBNAME: str = 'chatinterface_server'
+    MARIADB_USER: str = 'chatinterface_server'
+
+    MARIADB_PASSWORD: str = ''
+
+    @computed_field
+    @property
+    def SQLALCHEMY_ENGINE_URI(self) -> MariaDBDsn:
+        return MultiHostUrl.build(
+            scheme='mariadb+mariadbconnector',
+            username=self.MARIADB_USER,
+            password=self.MARIADB_PASSWORD,
+            host=self.MARIADB_HOST,
+            port=self.MARIADB_PORT,
+            path=self.MARIADB_DBNAME
+        )
+
+    STATIC_DIR: str = './static'
+    TEMPLATES_DIR: str = './templates'
+
+    FIRST_USER_NAME: str = 'admin'
+    FIRST_USER_PASSWORD: str = 'helloworld'
 
 
 def load_or_create_config(config_path: str, default_config: dict) -> dict:
@@ -113,3 +146,6 @@ class ConfigManager:
 
         log_config: dict = load_or_create_config(log_config_file, default_logging_config)
         logging.config.dictConfig(log_config)
+
+
+settings: AppSettings = AppSettings()

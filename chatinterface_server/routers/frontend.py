@@ -1,10 +1,9 @@
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ..dependencies import login_required
+from ..dependencies import SessionOrRedirectDep
 from ..models.common import AppState, SessionInfo
 
 router: APIRouter = APIRouter(prefix="/frontend", tags=['frontend'])
@@ -14,11 +13,11 @@ logger: logging.Logger = logging.getLogger("chatinterface.logger.frontend")
 @router.get('/', response_class=HTMLResponse)
 async def root_path(
     req: Request,
-    session: Annotated[SessionInfo | RedirectResponse, Depends(login_required)]
+    session_or_redirect: SessionOrRedirectDep
 ):
     state: AppState = req.state
-    if isinstance(session, RedirectResponse):
-        return session
+    if isinstance(session_or_redirect, RedirectResponse):
+        return session_or_redirect
 
     return state.templates.TemplateResponse(
         request=req, name='root_path.html'
@@ -26,9 +25,12 @@ async def root_path(
 
 
 @router.get('/login', response_class=HTMLResponse)
-async def login_path(req: Request, session: Annotated[SessionInfo | RedirectResponse, Depends(login_required)]):
+async def login_path(
+    req: Request, 
+    session_or_redirect: SessionOrRedirectDep
+):
     state: AppState = req.state
-    if isinstance(session, SessionInfo):
+    if isinstance(session_or_redirect, SessionInfo):
         return RedirectResponse('/frontend/')
 
     return state.templates.TemplateResponse(

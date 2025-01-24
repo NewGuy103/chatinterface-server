@@ -1,4 +1,3 @@
-import os
 import logging
 
 from contextlib import asynccontextmanager
@@ -10,7 +9,9 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .internal.config import ConfigManager
+from sqlmodel import create_engine
+
+from .internal.config import ConfigManager, settings
 from .internal.database import MainDatabase
 
 from .models.common import AppState
@@ -22,69 +23,41 @@ config: ConfigManager = ConfigManager()
 config.setup_logging()
 
 logger: logging.Logger = logging.getLogger("chatinterface.logger.main")
-
-
-async def load_database() -> MainDatabase:
-    db_host: str = os.getenv('CHATINTERFACE_DB_HOST', 'localhost')
-    db_port: str = os.getenv('CHATINTERFACE_DB_PORT', '3306')
-
-    db_name: str = os.getenv("CHATINTERFACE_DB_NAME", 'chatinterface_server')
-    db_user: str = os.getenv("CHATINTERFACE_DB_USER", 'chatinterface_server')
-
-    db_password: str = os.getenv("CHATINTERFACE_DB_PASSWORD", '')
-    if not db_port.isdigit():
-        raise ValueError("database port is not a valid port number")
-    else:
-        db_port: int = int(db_port)
-
-    db: MainDatabase = MainDatabase(
-        db_host, port=db_port, db_name=db_name,
-        db_user=db_user, db_password=db_password
-    )
-    try:
-        await db.setup()
-    except Exception as e:
-        logger.critical("Could not connect to database:", exc_info=e)
-        raise
-
-    return db
-
+engine = create_engine(str(settings.SQLALCHEMY_ENGINE_URI))
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI) -> AsyncIterator[AppState]:
-    templates = Jinja2Templates(directory=templates_directory)
+    db: MainDatabase = MainDatabase(engine)
+    await db.setup()
+
+    templates = Jinja2Templates(directory=settings.TEMPLATES_DIR)
     ws_clients: dict = {}
 
-    db: MainDatabase = await load_database()
+    app.mount("/static", StaticFiles(directory=settings.STATIC_DIR), name="static")
     logger.info("Application started")
 
     app_state: dict = {
-        'db': db, 
         'ws_clients': ws_clients,
-        'config': config, 
-        'templates': templates
+        'config': config,
+        'templates': templates,
+        'db': db
     }
     yield app_state
 
-    db.close()
     logger.info("Application exiting")
 
-
-static_files_directory: str = os.getenv("CHATINTERFACE_STATIC_DIR", "./static")
-templates_directory: str = os.getenv("CHATINTERFACE_TEMPLATES_DIR", "./templates")
 
 app: FastAPI = FastAPI(
     lifespan=app_lifespan,
     title="chatinterface-server",
     version=__version__,
     license_info={
-        'name': 'GNU General Public License Version 2.0, June 1991',
-        'identifier': 'GPL-2.0',
-        'url': 'http://www.gnu.org/licenses/gpl-2.0.txt'
-    }
+        'name': 'Mozilla Public License 2.0',
+        'identifier': 'MPL-2.0',
+        'url': 'https://www.mozilla.org/en-US/MPL/2.0/'
+    },
+    debug=True
 )
-
-app.mount("/static", StaticFiles(directory=static_files_directory), name="static")
 
 api_routers: APIRouter = APIRouter(prefix='/api')
 api_routers.include_router(auth.router)
