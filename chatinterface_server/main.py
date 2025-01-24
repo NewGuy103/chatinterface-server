@@ -56,7 +56,7 @@ app: FastAPI = FastAPI(
         'identifier': 'MPL-2.0',
         'url': 'https://www.mozilla.org/en-US/MPL/2.0/'
     },
-    debug=True
+    debug=False
 )
 
 api_routers: APIRouter = APIRouter(prefix='/api')
