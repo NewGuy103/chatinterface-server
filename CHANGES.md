@@ -1,76 +1,54 @@
-# Progress on replacing mysql-connector-python with sqlmodel
+# Fully replace mysql-connector-python with SQLModel ORM
 
 **Version**: v0.1.0
 
-**Date:** 24/01/2025
+**Date:** 28/01/2025
 
 ## Additions
 
-**`setup.py`**:
+**`models/chats.py`**:
 
-* Copy requirements from requirements.in to install_requires.
-
-**`dependencies.py`**:
-
-* Added simple `HttpAuthDep` and `SessionOrRedirectDep` type annotation aliases.
-
-**`OPEN_SOURCE_LICENSES.md`**:
-
-* Added `sqlmodel` and `mariadb` attributions.
-
-**`requirements.in | requirements.txt`**:
-
-* Added `sqlmodel` and `mariadb` as dependencies.
+* Added `min_length=1` to `message_data` fields.
+* Created `MessagesGetPublic` as the return model for the messages returned form the database.
 
 **`models/dbtables.py`**:
 
-* Migrated raw SQL tables to SQLModel tables.
+* Added `min_length=1` to `Messages.message_data` field.
+* Created `UserChatRelations` table to replace the old method of checking for a chat relation.
 
-**`LICENSES/lgpl-2.1-or-later.txt`**:
+**`internal/database.py`**:
 
-* Added license text for `mariadb`.
-
-**`internal/config.py`**:
-
-* Added `AppSettings` which takes configuration from the
+* Added check to `ChatMethods.store_message` to prevent empty message data.
 
 ## Changes
 
-**`LICENSE``**:
+**`/__init__.py`**:
 
-* Relicensed from GPL v2.0 to MPL 2.0.
+* Revert not importing submodules, it broke the app.
 
-**`main.py`**:
+**`models/chats.py`**:
 
-* Removed `load_database()`, now creates the SQLAlchemy engine directly and passes it to the database.
+* Changed `DeleteMessage.message_id` to a UUID type.
 
-**`OPEN_SOURCE_LICENSES.md`**:
+**`internal/constants.py`**:
 
-* Removed `mysql-connector-python` attribution as it is no longer a dependency.
+* Removed `ID_MISMATCH` constant, as it is no longer needed.
 
-**`requirements.in | requirements.txt`**:
+**`internal/database.py`**:
 
-* Removed `mysql-connector-python` as a dependency.
+* `MainDatabase.get_userid` now returns a UUID type or `None` instead of a string.
+* Renamed `ChatMethods.get_previous_chats` to `get_chat_relations` and rewritten the function to use `UserChatRelations` instead.
+* `ChatMethods.get_messages` and `get_message` rewritten to use SQLModel while the raw SQL is left as a comment.
 
-**`internal/database.by`**:
+**`routers/chats.py`**:
 
-* Changed `MainDatabase` to take an engine as a parameter instead of the database configuration.
-* Rewrote `UserMethods` to use SQLModel methods instead of raw SQL.
-* Removed `transaction()` context manager, replaced by SQLModel's sessions.
-
-**`routers/auth.py`**:
-
-* Removed existing WebSocket disconnect setup to rework it.
-
-**`models/ws.py`**:
-
-* Removed `ChatMessageSend` model.
-
-**`LICENSES/`**:
-
-* Removed Apache 2.0, BSD 2 and 3 clause, and GPL 2.0 license text.
+* `/recipients` has been changed to `/retrieve_recipients`, and the function name is now `get_chat_relations`.
+* `/messages` has been changed to `/retrieve_messages`, and the route now returns a list of `MessagesGetPublic` models.
+* `/send_message` and `/compose_message` now returns a UUID.
+* `/get_message/{message_id}` now returns a `MessagesGetPublic` model.
+* `/delete_message/{message_id}` and `/edit_message/{message_id}` now returns `True`.
+* Improved the log message a little.
 
 ## Misc
 
-* `__init__.py` files no longer import their submodules to prevent circular imports.
-* Migrating from raw SQL to SQLModel not yet complete, only completed migration is `UserMethods`.
+* The frontend will be updated sooner or later to use these recent changes.

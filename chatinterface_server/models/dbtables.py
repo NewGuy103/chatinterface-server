@@ -32,4 +32,9 @@ class Messages(SQLModel, table=True):
         index=True
     )
 
-    message_data: str = Field(max_length=2000)
+    message_data: str = Field(max_length=2000, min_length=1)
+
+
+class UserChatRelations(SQLModel, table=True):
+    sender_id: uuid.UUID = Field(primary_key=True, foreign_key='users.user_id', ondelete='CASCADE')
+    recipient_id: uuid.UUID = Field(foreign_key='users.user_id', ondelete='CASCADE')

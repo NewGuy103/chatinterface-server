@@ -8,11 +8,15 @@ import argon2  # argon2-cffi
 from datetime import datetime
 from functools import wraps, partial
 from concurrent.futures import ThreadPoolExecutor
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import SQLModel, Session, and_, desc, or_, select
 from sqlalchemy import Engine
 
 from . import constants
-from ..models.dbtables import Users, UserSessions
+from ..models.dbtables import (
+    Users, UserSessions, Messages, UserChatRelations
+)
+from ..models.chats import MessagesGetPublic
+
 from .config import settings
 
 logger: logging.Logger = logging.getLogger("chatinterface.logger.database")
@@ -63,7 +67,7 @@ class MainDatabase:
         self.messages = ChatMethods(self)
         self.users = UserMethods(self)
 
-    def get_userid(self, username: str) -> str:
+    def get_userid(self, username: str) -> uuid.UUID | None:
         if not isinstance(username, str):
             raise TypeError("username is not a string")
 
@@ -73,7 +77,7 @@ class MainDatabase:
             user: Users | None = result.one_or_none()
 
         if not user:
-            return ''
+            return None
 
         return user.user_id
     
@@ -105,7 +109,7 @@ class UserMethods:
         if len(username) > 20:
             raise ValueError("username is too long (over 20 characters)")
         
-        user_data: str = self.get_userid(username)
+        user_data: uuid.UUID = self.get_userid(username)
         if user_data:
             return constants.USER_EXISTS
 
@@ -161,7 +165,7 @@ class UserMethods:
         if date_today > expiry_date:
             return constants.DATE_EXPIRED
 
-        user_id: str = self.get_userid(username)
+        user_id: uuid.UUID = self.get_userid(username)
         if not user_id:
             return constants.NO_USER
 
@@ -272,48 +276,40 @@ class ChatMethods:
         self.get_userid = parent.get_userid
 
     @async_threaded
-    def get_previous_chats(self, username: str) -> str | set[str]:
+    def get_chat_relations(self, username: str) -> str | set[str]:
         if not isinstance(username, str):
             raise TypeError("username is not a string")
 
         sender_names: set = set()
         recipient_names: set = set()
 
-        user_id: str = self.get_userid(username)
+        user_id: uuid.UUID = self.get_userid(username)
         if not user_id:
             return constants.NO_USER
         
         with Session(self.engine) as session:
-            cursor.execute("""
-                SELECT DISTINCT recipient_id FROM messages 
-                WHERE sender_id=%s
-            """, [user_id])
-            recipient_ids: list[tuple[str]] = cursor.fetchall()
+            sender_statement = select(UserChatRelations).where(
+                UserChatRelations.sender_id == user_id
+            )
+            sender_results = session.exec(sender_statement)
 
-            cursor.execute("""
-                SELECT DISTINCT sender_id FROM messages 
-                WHERE recipient_id=%s
-            """, [user_id])
-            sender_ids: list[tuple[str]] = cursor.fetchall()
+            recipient_statement = select(UserChatRelations).where(
+                UserChatRelations.recipient_id == user_id
+            )
+            recipient_results = session.exec(recipient_statement)
 
-            for id_tuple in recipient_ids:
-                recipient_id: str = id_tuple[0]
-                cursor.execute("""
-                    SELECT username FROM users
-                    WHERE user_id=%s
-                """, [recipient_id])
+            for relation in sender_results:
+                user: Users = session.exec(
+                    select(Users).where(Users.user_id == relation.recipient_id)
+                ).one()
+                sender_names.add(user.username)
 
-                recipient_names.add(cursor.fetchone()[0])
+            for relation in recipient_results:
+                user: Users = session.exec(
+                    select(Users).where(Users.user_id == relation.sender_id)
+                ).one()
+                recipient_names.add(user.username)
 
-            for id_tuple in sender_ids:
-                sender_id: str = id_tuple[0]
-                cursor.execute("""
-                    SELECT username FROM users
-                    WHERE user_id=%s
-                """, [sender_id])
-
-                sender_names.add(cursor.fetchone()[0])
-        
         return sender_names | recipient_names
 
     @async_threaded
@@ -327,8 +323,11 @@ class ChatMethods:
         if not isinstance(message_data, str):
             raise TypeError("message data must be string")
 
-        sender_id: str = self.get_userid(sender)
-        recipient_id: str = self.get_userid(recipient)
+        if len(message_data) < 1:
+            raise ValueError("message data must not be empty")
+
+        sender_id: uuid.UUID = self.get_userid(sender)
+        recipient_id: uuid.UUID = self.get_userid(recipient)
 
         if not sender_id:
             return constants.NO_SENDER
@@ -336,19 +335,33 @@ class ChatMethods:
         if not recipient_id:
             return constants.NO_RECIPIENT
 
-        message_id: str = str(uuid.uuid4())
-        with Session(self.engine) as session:
-            cursor.execute("""
-                INSERT INTO messages (
-                    message_id, sender_id, recipient_id,
-                    message_data
-                ) VALUES (%s, %s, %s, %s)
-            """, [message_id, sender_id, recipient_id, message_data])
+        message_id: uuid.UUID = uuid.uuid4()
+        new_message: Messages = Messages(
+            message_id=message_id,
+            sender_id=sender_id, 
+            recipient_id=recipient_id,
+            message_data=message_data
+        )
 
-        return message_id
+        with Session(self.engine) as session:
+            has_relation: UserChatRelations | None = session.exec(select(UserChatRelations).where(
+                UserChatRelations.sender_id == sender_id,
+                UserChatRelations.recipient_id == recipient_id
+            )).one_or_none()
+
+            if not has_relation:
+                new_relation: UserChatRelations = UserChatRelations(
+                    sender_id=sender_id, recipient_id=recipient_id
+                )
+                session.add(new_relation)
+
+            session.add(new_message)
+            session.commit()
+
+        return str(message_id)
 
     @async_threaded
-    def get_messages(self, sender: str, recipient: str, amount: int = 100) -> str | list[tuple]:
+    def get_messages(self, sender: str, recipient: str, amount: int = 100) -> str | list[MessagesGetPublic]:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
         
@@ -358,8 +371,8 @@ class ChatMethods:
         if not isinstance(amount, int):
             raise TypeError("amount must be an int")
 
-        sender_id: str = self.get_userid(sender)
-        recipient_id: str = self.get_userid(recipient)
+        sender_id: uuid.UUID = self.get_userid(sender)
+        recipient_id: uuid.UUID = self.get_userid(recipient)
 
         if not sender_id:
             return constants.NO_SENDER
@@ -368,90 +381,134 @@ class ChatMethods:
             return constants.NO_RECIPIENT
 
         with Session(self.engine) as session:
-            cursor.execute("""
-                SELECT (
-                    SELECT username FROM users
-                    WHERE users.user_id=messages.sender_id
-                ) AS sender_name, message_data, 
-                    DATE_FORMAT(send_date, "%y-%m-%d %h:%m:%S.%f"), message_id
+            sender_user: Users = session.exec(
+                select(Users).where(Users.user_id == sender_id)
+            ).one()
+            recipient_user: Users = session.exec(
+                select(Users).where(Users.user_id == recipient_id)
+            ).one()
 
-                FROM messages WHERE (sender_id = %s AND recipient_id = %s)
-                OR (sender_id = %s AND recipient_id = %s)
+            # Statement in raw SQL
+            # SELECT (
+            #     SELECT username FROM users
+            #     WHERE users.user_id=messages.sender_id
+            # ) AS sender_name, message_data, 
+            #     DATE_FORMAT(send_date, "%y-%m-%d %h:%m:%S.%f"), message_id
 
-                ORDER BY send_date DESC;
-            """, [sender_id, recipient_id, recipient_id, sender_id])
-            chat_data: list[tuple] = cursor.fetchmany(amount)
-            cursor.fetchall()  # discard the rest
+            # FROM messages WHERE (sender_id = %s AND recipient_id = %s)
+            # OR (sender_id = %s AND recipient_id = %s)
 
-        return chat_data
+            # ORDER BY send_date DESC;
+            statement = select(Messages).where(
+                or_(
+                    and_(
+                        Messages.sender_id == sender_id, 
+                        Messages.recipient_id == recipient_id
+                    ),
+                    and_(
+                        Messages.sender_id == recipient_id,
+                        Messages.recipient_id == sender_id
+                    )
+                )
+            ).order_by(desc(Messages.send_date)).limit(amount)
+            result = session.exec(statement)
+
+            message_list: list[MessagesGetPublic] = []
+            for message in result:
+                if message.sender_id == sender_id:
+                    sender_name: str = sender_user.username
+                elif message.sender_id == recipient_id:
+                    sender_name: str = recipient_user.username
+                else:
+                    raise RuntimeError('sender_name invalid')
+
+                message_public: MessagesGetPublic = MessagesGetPublic(
+                    sender_name=sender_name,
+                    message_data=message.message_data,
+                    send_date=datetime.strftime(message.send_date, "%Y-%m-%d %H:%M:%S"),
+                    message_id=str(message.message_id)
+                )
+                message_list.append(message_public)
+
+        return message_list
 
     @async_threaded
-    def get_message(self, sender: str, message_id: str):
+    def get_message(self, sender: str, message_id: uuid.UUID):
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
 
-        if not isinstance(message_id, str):
-            raise TypeError("message_id is not a string")
+        if not isinstance(message_id, uuid.UUID):
+            raise TypeError("message_id is not a uuid")
 
-
-        sender_id: str = self.get_userid(sender)
+        sender_id: uuid.UUID = self.get_userid(sender)
         if not sender_id:
             return constants.NO_SENDER
 
         with Session(self.engine) as session:
-            cursor.execute("""
-                SELECT (
-                    SELECT username FROM users
-                    WHERE users.user_id=messages.sender_id
-                ) AS sender_name, message_data, DATE_FORMAT(send_date, "%y-%m-%d %h:%m:%S.%f")
+            sender_user: Users = session.exec(
+                select(Users).where(Users.user_id == sender_id)
+            ).one()
 
-                FROM messages
-                WHERE message_id=%s AND sender_id=%s
-            """, [message_id, sender_id])
-            sender_data: tuple = cursor.fetchone()
+            # Statement in raw SQL
+            # SELECT (
+            #     SELECT username FROM users
+            #     WHERE users.user_id=messages.sender_id
+            # ) AS sender_name, message_data, DATE_FORMAT(send_date, "%y-%m-%d %h:%m:%S.%f")
 
-            if not sender_data:
+            # FROM messages
+            # WHERE message_id=%s AND sender_id=%s
+            message: Messages | None = session.exec(
+                select(Messages).where(
+                    Messages.message_id == message_id,
+                    Messages.sender_id == sender_id
+                )
+            ).one_or_none()
+
+            if not message:
                 return constants.INVALID_MESSAGE
 
-        return sender_data
+        return MessagesGetPublic(
+            sender_name = sender_user.username,
+            message_data=message.message_data,
+            send_date=datetime.strftime(message.send_date, "%Y-%m-%d %H:%M:%S"),
+            message_id=str(message.message_id)
+        )
 
     @async_threaded
-    def delete_message(self, sender: str, message_id: str) -> str | int:
+    def delete_message(self, sender: str, message_id: uuid.UUID) -> str | int:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
 
-        if not isinstance(message_id, str):
-            raise TypeError("message_id is not a string")
+        if not isinstance(message_id, uuid.UUID):
+            raise TypeError("message_id is not a uuid")
 
-        sender_id: str = self.get_userid(sender)
+        sender_id: uuid.UUID = self.get_userid(sender)
         if not sender_id:
             return constants.NO_SENDER
 
         with Session(self.engine) as session:
-            cursor.execute("SELECT sender_id FROM messages WHERE message_id=%s", [message_id])
-            sender_data: tuple[str] = cursor.fetchone()
+            message: Messages = session.exec(
+                select(Messages).where(
+                    Messages.message_id == message_id,
+                    Messages.sender_id == sender_id
+                )
+            ).one_or_none()
 
-            if not sender_data:
+            if not message:
                 return constants.INVALID_MESSAGE
-
-            saved_sender_id: str = sender_data[0]
-            if sender_id != saved_sender_id:
-                return constants.ID_MISMATCH
             
-            cursor.execute("""
-                DELETE FROM messages
-                WHERE message_id=%s
-            """, [message_id])
+            session.delete(message)
+            session.commit()
         
         return 0
 
     @async_threaded
-    def edit_message(self, sender: str, message_id: str, message_data: str) -> str | int:
+    def edit_message(self, sender: str, message_id: uuid.UUID, message_data: str) -> str | int:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
 
-        if not isinstance(message_id, str):
-            raise TypeError("message_id is not a string")
+        if not isinstance(message_id, uuid.UUID):
+            raise TypeError("message_id is not a uuid")
 
         if not isinstance(message_data, str):
             raise TypeError("message data is not a string")
@@ -459,26 +516,24 @@ class ChatMethods:
         if len(message_data) < 1:
             raise ValueError("message data must not be empty")
 
-        sender_id: str = self.get_userid(sender)
+        sender_id: uuid.UUID = self.get_userid(sender)
         if not sender_id:
             return constants.NO_SENDER
 
         with Session(self.engine) as session:
-            cursor.execute("SELECT sender_id FROM messages WHERE message_id=%s", [message_id])
-            sender_data: tuple[str] = cursor.fetchone()
+            message: Messages = session.exec(
+                select(Messages).where(
+                    Messages.message_id == message_id,
+                    Messages.sender_id == sender_id
+                )
+            ).one_or_none()
 
-            if not sender_data:
+            if not message:
                 return constants.INVALID_MESSAGE
 
-            saved_sender_id: str = sender_data[0]
-            if sender_id != saved_sender_id:
-                return constants.ID_MISMATCH
-
-            cursor.execute("""
-                UPDATE messages
-                SET message_data=%s
-                WHERE message_id=%s
-            """, [message_data, message_id])
+            message.message_data = message_data
+            session.add(message)
+            session.commit()
         
         return 0
 
