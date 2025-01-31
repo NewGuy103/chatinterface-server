@@ -10,6 +10,9 @@ Python 3.10+
 
 ## Installation
 
+This application requires the MariaDB Python connector, which depends on the MariaDB C connector. You can find
+instructions to install it here: [MariaDB Python Connector](https://mariadb.com/docs/server/connect/programming-languages/python/install/).
+
 `pip install newguy103-chatinterface-server` (Note: Not yet fully ready on PyPI)
 
 This will install the necessary dependencies, and the app itself as `chatinterface_server`.

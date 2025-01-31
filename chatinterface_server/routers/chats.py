@@ -4,12 +4,13 @@ import uuid
 from typing import Annotated
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request, Query, WebSocket
+from fastapi import APIRouter, HTTPException, Request, Query
 
 from ..models.common import AppState
 from ..models.chats import ComposeMessage, EditMessage, SendMessage, MessagesGetPublic
 from ..dependencies import HttpAuthDep
 from ..internal import constants
+from ..internal.constants import WebsocketMessages
 
 router = APIRouter(prefix="/chats", tags=['chats'])
 logger: logging.Logger = logging.getLogger("chatinterface.logger.ws")
@@ -88,28 +89,25 @@ async def send_message(
         data.message_data
     )
 
-    # Note: Make a class or dependency class to do this, it looks bad to couple this
-    # together, but it's a temp fix
     current_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
-    recipient_payload: dict = {
-        'sender': session.username,
-        'data': data.message_data,
-        'timestamp': current_time,
-        'message_id': message_id
-    }
 
-    message_data: bytes = {
-        'message': 'message.received',
-        'data': recipient_payload
-    }
+    # Using a model instead of a dict so its the same as
+    # the get_message return
+    recipient_payload: MessagesGetPublic = MessagesGetPublic(
+        sender_name=session.username,
+        message_data=data.message_data,
+        send_date=current_time,
+        message_id=message_id
+    )
 
-    for client_info in state.ws_clients.values():
-        if client_info.username != data.recipient:
-            continue
+    # Can't send a UUID as JSON directly, turning into a str first
+    dumped_model = recipient_payload.model_dump()
+    dumped_model['message_id'] = str(dumped_model["message_id"])
 
-        recipient_ws: WebSocket = client_info.ws
-        await recipient_ws.send_json(message_data)
-
+    await state.ws_clients.broadcast_message(
+        data.recipient, WebsocketMessages.MESSAGE_RECEIVED,
+        dumped_model
+    )
     return message_id
 
 
@@ -173,7 +171,7 @@ async def delete_message(
     message_id: uuid.UUID,
     req: Request,
     session: HttpAuthDep
-) -> bool:
+) -> dict:
     state: AppState = req.state
     delete_result: str | int = await state.db.messages.delete_message(session.username, message_id)
 
@@ -189,7 +187,7 @@ async def delete_message(
             )
             raise HTTPException(status_code=500, detail="Server error")
     
-    return True
+    return {'success': True}
 
 
 @router.patch('/edit_message/{message_id}')
@@ -198,7 +196,7 @@ async def edit_message(
     message_data: EditMessage,
     req: Request,
     session: HttpAuthDep
-) -> bool:
+) -> dict:
     state: AppState = req.state
     edit_result: str | int = await state.db.messages.edit_message(
         session.username, message_id,
@@ -214,4 +212,4 @@ async def edit_message(
             logger.error("Editing message ID [%s] failed due to unexpected result: %s", message_id, edit_result)
             raise HTTPException(status_code=500, detail="Server error")
 
-    return True
+    return {'success': True}

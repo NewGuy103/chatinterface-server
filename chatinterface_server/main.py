@@ -13,6 +13,7 @@ from sqlmodel import create_engine
 
 from .internal.config import ConfigManager, settings
 from .internal.database import MainDatabase
+from .internal.ws import WebsocketClients
 
 from .models.common import AppState
 from .routers import auth, chats, frontend, ws
@@ -23,15 +24,21 @@ config: ConfigManager = ConfigManager()
 config.setup_logging()
 
 logger: logging.Logger = logging.getLogger("chatinterface.logger.main")
-engine = create_engine(str(settings.SQLALCHEMY_ENGINE_URI))
+
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI) -> AsyncIterator[AppState]:
+    engine = create_engine(str(settings.SQLALCHEMY_ENGINE_URI))
     db: MainDatabase = MainDatabase(engine)
-    await db.setup()
+
+    try:
+        await db.setup()
+    except Exception:
+        logger.exception("Database connection failed:")
+        raise
 
     templates = Jinja2Templates(directory=settings.TEMPLATES_DIR)
-    ws_clients: dict = {}
+    ws_clients: WebsocketClients = WebsocketClients()
 
     app.mount("/static", StaticFiles(directory=settings.STATIC_DIR), name="static")
     logger.info("Application started")

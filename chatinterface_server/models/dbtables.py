@@ -19,7 +19,7 @@ class UserSessions(SQLModel, table=True):
     )
     user_id: uuid.UUID = Field(foreign_key='users.user_id', ondelete='CASCADE')
     expires_on: datetime = Field(index=True)
-    created_at: datetime = Field(default=datetime.now())
+    created_at: datetime = Field(default_factory=datetime.now)
 
 
 class Messages(SQLModel, table=True):
@@ -27,10 +27,7 @@ class Messages(SQLModel, table=True):
     sender_id: uuid.UUID = Field(foreign_key='users.user_id', ondelete='CASCADE')
 
     recipient_id: uuid.UUID = Field(foreign_key='users.user_id', ondelete='CASCADE')
-    send_date: datetime = Field(
-        default=datetime.now().strftime('%y-%m-%d %H:%M:%S.%f'),
-        index=True
-    )
+    send_date: datetime = Field(default_factory=datetime.now, index=True)
 
     message_data: str = Field(max_length=2000, min_length=1)
 

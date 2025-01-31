@@ -1,3 +1,5 @@
+from enum import StrEnum
+
 USER_EXISTS = "USER_EXISTS"
 NO_USER = "NO_USER"
 
@@ -11,3 +13,8 @@ NO_SENDER = "NO_SENDER"
 NO_RECIPIENT = "NO_RECIPIENT"
 
 INVALID_MESSAGE = "INVALID_MESSAGE"
+
+
+class WebsocketMessages(StrEnum):
+    MESSAGE_RECEIVED = 'message.received'
+    AUTH_REVOKED = 'auth.revoked'

@@ -3,7 +3,7 @@
 let sessionInfo;
 
 /**
- * @type {Map<string, Array>}
+ * @type {Map<string, Array<Map<string, string>>>}
  */
 let messagesMap;
 
@@ -26,7 +26,7 @@ async function safeFetch(fetchPromise) {
 }
 
 async function getSessionInfo() {
-    const [ response, error ] = await safeFetch(fetch('/api/token/info', { method: "GET" }))
+    const [ response, error ] = await safeFetch(fetch('/api/token/session_info', { method: "GET" }))
 
     if (error) {
         console.error(`[getSessionInfo] Response failed: ${error}`)
@@ -48,7 +48,7 @@ async function getSessionInfo() {
  * @returns {Promise<Array<string>>}
  */
 async function getRecipientsList() {
-    const [ response, error ] = await safeFetch(fetch('/api/chats/recipients', { method: "GET" }))
+    const [ response, error ] = await safeFetch(fetch('/api/chats/retrieve_recipients', { method: "GET" }))
 
     if (error) {
         console.error(`[getRecipientsList] Request failed failed: ${error}`)
@@ -75,7 +75,7 @@ async function getPreviousMessages(recipientsList) {
     const failList = []
 
     recipientsList.forEach(async (username) => {
-        const apiUrl = '/api/chats/messages'
+        const apiUrl = '/api/chats/retrieve_messages'
         const params = new URLSearchParams({
             recipient: username,
             amount: 100
@@ -90,10 +90,19 @@ async function getPreviousMessages(recipientsList) {
         }
 
         successList.push(username)
-        const messageList = await response.json()
 
-        messageList.reverse() // server already sorts by newest
-        messagesMap.set(username, messageList)
+        /**
+         * @type {Array}
+         */
+        const messageJson = await response.json()
+        const messageList = []
+
+        messageJson.forEach((value, index) => {
+            messageList[index] = new Map(Object.entries(value))
+        })
+
+        const reversedList = messageList.toReversed()
+        messagesMap.set(username, reversedList)
     })
     if (failList.length) {
         const jsonFailList = JSON.stringify(failList)
@@ -113,7 +122,7 @@ async function getPreviousMessages(recipientsList) {
 
 /**
  * @param {string} messageId 
- * @returns {Promise<Array<string>>}
+ * @returns {Promise<Map<string, string>>}
  */
 async function getMessageById(messageId) {
     const [ response, error ] = await safeFetch(fetch(`/api/chats/get_message/${messageId}`))
@@ -129,12 +138,13 @@ async function getMessageById(messageId) {
     }
 
     const messageData = await response.json()
-    return messageData
+    return new Map(Object.entries(messageData))
 }
 /**
  * 
  * @param {string} recipientName 
  * @param {string} messageData 
+ * @returns {Promise<string>} Returns a UUID.
  */
 async function sendChatMessage(recipientName, messageData) {
     const reqBody = JSON.stringify({
@@ -169,7 +179,6 @@ function addRecipients(recipientsArray) {
     const recipientsBox = document.getElementById('recipients')
     if (!recipientsBox) throw new Error("Recipients box not found")
 
-    recipientsArray.reverse() // server already sorts by date sent
     recipientsArray.forEach(username => {
         const recipientItemDiv = document.createElement('div')
         const recipientNameText = document.createElement('p')
@@ -226,26 +235,20 @@ function ws_keepAlive() {
 }
 
 function ws_messageReceived(data) {
-    const recipientData = [
-        data.sender,
-        data.data,
-        data.timestamp,
-        data.message_id
-    ]
-
-    const newMessagesList = messagesMap.get(data.sender)
-    newMessagesList.push(recipientData)
+    const dataAsMap = new Map(Object.entries(data))
+    const newMessagesList = messagesMap.get(dataAsMap.get('sender_name'))
+    newMessagesList.push(dataAsMap)
 
     const topbarUsername = document.getElementsByClassName('topbar-recipient-username')[0]
-    if (topbarUsername.textContent === data.sender) {
-        appendMessage(...recipientData)
+    if (topbarUsername.textContent === dataAsMap.get('sender_name')) {
+        appendMessage(dataAsMap)
     }
 }
 
 /**
- * @param {Array} messageData 
+ * @param {Map<string, string>} messageData 
  */
-function appendMessage(recipientName, messageText, sendDate, messageId) {
+function appendMessage(messageData) {
     const messagesBox = document.getElementById('messages-box')
 
     const messageItemDiv = document.createElement('div')
@@ -255,9 +258,9 @@ function appendMessage(recipientName, messageText, sendDate, messageId) {
     messageItemDiv.classList.add('message-item')
 
     messageUsernameText.classList.add('message-username')
-    messageUsernameText.textContent = recipientName
+    messageUsernameText.textContent = messageData.get('sender_name')
 
-    messageDataText.textContent = messageText
+    messageDataText.textContent = messageData.get('message_data')
     messageDataText.classList.add('message-text')
 
     messageItemDiv.appendChild(messageUsernameText)
@@ -281,7 +284,7 @@ function switchToRecipient(ev, username) {
     const messageDataList = messagesMap.get(username)
     if (!username) throw new Error("Missing recipient username in messagesMap")
 
-    messageDataList.forEach((messageData) => appendMessage(...messageData))
+    messageDataList.forEach((messageData) => appendMessage(messageData))
 }
 
 async function main() {
@@ -331,8 +334,9 @@ document.addEventListener('DOMContentLoaded', async (ev) => {
         if (!messageData) return
 
         const newMessagesList = messagesMap.get(topbarUsername.textContent)
-        newMessagesList.push([...messageData, messageId])
-        appendMessage(...messageData, messageId)
+        newMessagesList.push(messageData)
+
+        appendMessage(messageData)
     })
     await main()
 })

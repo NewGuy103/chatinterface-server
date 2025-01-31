@@ -1,14 +1,13 @@
 import asyncio
 import json
 from typing import Annotated
-import uuid
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from pydantic import ValidationError
 
 from ..models.common import SessionInfo, AppState
-from ..models.ws import ClientInfo, MessageData
+from ..models.ws import MessageData
 
 from ..dependencies import get_session_info_ws
 
@@ -21,21 +20,13 @@ async def create_websocket(websocket: WebSocket, session: Annotated[SessionInfo,
     state: AppState = websocket.state
     await websocket.accept()
 
-    client_id: str = str(uuid.uuid4())
-    client_info_dict: dict[str, WebSocket | str] = {
-        'ws': websocket,
-        'ip': f"{websocket.client.host}:{websocket.client.port}",
-        'username': session.username,
-        'token': session.token
-    }
-
-    client_info: ClientInfo = ClientInfo(**client_info_dict)
-    state.ws_clients[client_id] = client_info
+    connecting_host: str = f"{websocket.client.host}:{websocket.client.port}"
+    state.ws_clients.add_client(session.username, session.token, websocket)
 
     await websocket.send_json("OK")
     try:
         ws_authorized_logmsg: str = "WebSocket by user '%s' from IP '%s' authorized"
-        logger.debug(ws_authorized_logmsg, client_info.username, client_info.ip)
+        logger.debug(ws_authorized_logmsg, session.username, connecting_host)
 
         while True:
             try:
@@ -69,10 +60,8 @@ async def create_websocket(websocket: WebSocket, session: Annotated[SessionInfo,
         logmsg: str = "User '%s' from IP '%s' disconnected with code [%d] and reason [%s]"
 
         debug_logmsg: str = "WebSocketDisconnect traceback of user '%s' from IP '%s'"
-        logger.info(logmsg, client_info.username, client_info.ip, code, reason)
+        logger.info(logmsg, session.username, connecting_host, code, reason)
 
-        logger.debug(debug_logmsg, client_info.username, client_info.ip, exc_info=e)
+        logger.debug(debug_logmsg, session.username, connecting_host, exc_info=e)
     except Exception:
         logger.exception("Unexpected Exception during WebSocket connection:")
-    finally:
-        del state.ws_clients[client_id]

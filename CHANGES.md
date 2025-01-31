@@ -1,54 +1,60 @@
-# Fully replace mysql-connector-python with SQLModel ORM
+# Create websocket clients abstractions and improve logs
 
 **Version**: v0.1.0
 
-**Date:** 28/01/2025
+**Date:** 31/01/2025
 
 ## Additions
 
-**`models/chats.py`**:
+**`/README.md`**:
 
-* Added `min_length=1` to `message_data` fields.
-* Created `MessagesGetPublic` as the return model for the messages returned form the database.
+* Added text and link to the MariaDB Python connector.
 
-**`models/dbtables.py`**:
+**`internal/ws.py`**:
 
-* Added `min_length=1` to `Messages.message_data` field.
-* Created `UserChatRelations` table to replace the old method of checking for a chat relation.
+* Create module to put `WebsocketClients` abstraction to prevent any unexpected behavior.
 
-**`internal/database.py`**:
+**`docker/docker-compose.yml`**:
 
-* Added check to `ChatMethods.store_message` to prevent empty message data.
-
-## Changes
-
-**`/__init__.py`**:
-
-* Revert not importing submodules, it broke the app.
-
-**`models/chats.py`**:
-
-* Changed `DeleteMessage.message_id` to a UUID type.
+* Create compose file.
 
 **`internal/constants.py`**:
 
-* Removed `ID_MISMATCH` constant, as it is no longer needed.
+* Create `WebsocketMessages` enum for websocket message constants.
 
-**`internal/database.py`**:
+## Changes
 
-* `MainDatabase.get_userid` now returns a UUID type or `None` instead of a string.
-* Renamed `ChatMethods.get_previous_chats` to `get_chat_relations` and rewritten the function to use `UserChatRelations` instead.
-* `ChatMethods.get_messages` and `get_message` rewritten to use SQLModel while the raw SQL is left as a comment.
+**`/main.py`**:
+
+* Add error check if database cannot connect and log a message accordingly.
+
+**`models/common.py`**:
+
+* Now uses `typing.TYPE_CHECKING` to import the classes.
+
+**`models/dbtables.py`**:
+
+* Default datetimes now use `default_factory` instead of `default` for the current datetime.
+
+**`models/ws.py`**:
+
+* Removed `ClientInfo` as it is now useless.
+
+**`routers/auth.py`**:
+
+* `cookie_login` (or `/`) now returns a `success: true` dictionary instead of a simple bool.
+* `/revoke` has been renamed to `/revoke_session` and now properly revokes active WebSocket sessions.
+* `/info` has been renamed to `/session_info`.
 
 **`routers/chats.py`**:
 
-* `/recipients` has been changed to `/retrieve_recipients`, and the function name is now `get_chat_relations`.
-* `/messages` has been changed to `/retrieve_messages`, and the route now returns a list of `MessagesGetPublic` models.
-* `/send_message` and `/compose_message` now returns a UUID.
-* `/get_message/{message_id}` now returns a `MessagesGetPublic` model.
-* `/delete_message/{message_id}` and `/edit_message/{message_id}` now returns `True`.
-* Improved the log message a little.
+* Removed temporary fix and implemented the `WebsocketClients` class for broadcasting the message.
+* `/edit_message/{message_id}` and `/delete_message/{message_id}` now returns a `success: true` instead of a simple bool.
+
+**`routers/ws.py`**:
+
+* Replaced `ClientInfo` setup with the `WebsocketClients` class.
 
 ## Misc
 
-* The frontend will be updated sooner or later to use these recent changes.
+* Frontend JavaScript has been updated to use the previous commits.

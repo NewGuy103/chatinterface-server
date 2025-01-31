@@ -9,6 +9,7 @@ from ..models.common import AppState
 from ..dependencies import HttpAuthDep
 
 from ..internal import constants
+from ..internal.constants import WebsocketMessages
 
 router = APIRouter(prefix="/token", tags=['auth'])
 logger: logging.Logger = logging.getLogger("chatinterface.logger.auth")
@@ -18,7 +19,7 @@ logger: logging.Logger = logging.getLogger("chatinterface.logger.auth")
 async def cookie_login(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     req: Request, res: Response
-) -> bool:
+) -> dict:
     if len(form_data.username) > 20:
         raise HTTPException(status_code=400, detail="Username too long")
 
@@ -46,10 +47,10 @@ async def cookie_login(
         max_age=int(expire_offset.total_seconds())
     )
 
-    return True
+    return {'success': True}
 
 
-@router.post("/revoke")
+@router.post("/revoke_session")
 async def revoke_token(
     session: HttpAuthDep,
     req: Request
@@ -60,11 +61,14 @@ async def revoke_token(
     if del_result == constants.INVALID_SESSION:
         raise HTTPException(status_code=401, detail="Session token invalid")
 
-    # Add handlers to disconnect websocket...
+    await state.ws_clients.disconnect_clients_by_token(
+        session.username, session.token, 
+        WebsocketMessages.AUTH_REVOKED, {}
+    )
     return {'success': True}
 
 
-@router.get("/info")
+@router.get("/session_info")
 async def info_token(session: HttpAuthDep) -> dict[str, str]:
     token_data: dict = {
         'username': session.username,

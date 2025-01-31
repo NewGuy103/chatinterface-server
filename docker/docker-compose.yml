@@ -1,0 +1,24 @@
+volumes:
+  mariadb_data:
+
+services:
+  mariadb:
+    image: mariadb:lts
+    container_name: mariadb
+    volumes:
+      - mariadb_data:/var/lib/mysql:rw
+    environment:
+      - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1
+  chatinterface_server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: chatinterface_server
+    environment:
+      - MARIADB_HOST=mariadb
+      - MARIADB_PORT=3306
+      - MARIADB_DBNAME=chatinterface_server
+      - MARIADB_USER=chatinterface_server
+      # - MARIADB_PASSWORD=
+    ports:
+      - 8000:8000
