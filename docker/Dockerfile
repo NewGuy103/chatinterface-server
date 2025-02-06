@@ -1,4 +1,7 @@
 FROM python:3.12
+LABEL org.opencontainers.image.source=https://github.com/newguy103/chatinterface-server
+LABEL org.opencontainers.image.licenses=MPL-2.0
+
 WORKDIR /app
 
 RUN mkdir /opt/chatinterface-server
