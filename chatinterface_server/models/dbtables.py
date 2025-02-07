@@ -35,3 +35,7 @@ class Messages(SQLModel, table=True):
 class UserChatRelations(SQLModel, table=True):
     sender_id: uuid.UUID = Field(primary_key=True, foreign_key='users.user_id', ondelete='CASCADE')
     recipient_id: uuid.UUID = Field(foreign_key='users.user_id', ondelete='CASCADE')
+
+
+class UserInstance(Users, table=False):
+    pass

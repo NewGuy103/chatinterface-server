@@ -1,5 +1,9 @@
 "use strict";
 
+
+/**
+ * @type {Map<string, string>}
+ */
 let sessionInfo;
 
 /**
@@ -172,6 +176,70 @@ async function sendChatMessage(recipientName, messageData) {
     return successMessage
 }
 /**
+ * @param {string} messageId 
+ * @param {string} messageData 
+ */
+async function updateChatMessage(messageId, messageData) {
+    const reqBody = JSON.stringify({'message_data': messageData})
+    const fetchCall = fetch(`/api/chats/edit_message/${messageId}`, {
+        method: "PATCH",
+        headers: { 'Content-Type': 'application/json', 'accept': 'application/json' },
+        body: reqBody
+    })
+
+    const [ response, error ] = await safeFetch(fetchCall)
+    if (error) {
+        console.error(`[updateChatMessage] Request failed: ${error}`)
+        alert(`[updateChatMessage] Request failed: ${error}`)
+        return null
+    }
+    if (!response.ok) {
+        console.error(`[updateChatMessage] Failed with non-OK status code: ${response.status}`)
+        alert(`[updateChatMessage] Failed with non-OK status code: ${response.status} `)
+        return null
+    }
+
+    const successMessage = await response.json()
+    if (!successMessage.success) {
+        console.error(`[updateChatMessage] API Call was not successful: ${successMessage}`)
+        alert(`[updateChatMessage] API Call was not successful: ${successMessage}`)
+        return null
+    }
+
+    return successMessage
+}
+/**
+ * @param {string} messageId 
+ */
+async function deleteChatMessage(messageId) {
+    const fetchCall = fetch(`/api/chats/delete_message/${messageId}`, {
+        method: "DELETE",
+        headers: { 'Content-Type': 'application/json', 'accept': 'application/json' }
+    })
+
+    const [ response, error ] = await safeFetch(fetchCall)
+    if (error) {
+        console.error(`[deleteChatMessage] Request failed: ${error}`)
+        alert(`[deleteChatMessage] Request failed: ${error}`)
+        return null
+    }
+    if (!response.ok) {
+        console.error(`[deleteChatMessage] Failed with non-OK status code: ${response.status}`)
+        alert(`[deleteChatMessage] Failed with non-OK status code: ${response.status} `)
+        return null
+    }
+
+    const successMessage = await response.json()
+    if (!successMessage.success) {
+        console.error(`[deleteChatMessage] API Call was not successful: ${successMessage}`)
+        alert(`[deleteChatMessage] API Call was not successful: ${successMessage}`)
+        return null
+    }
+
+    return successMessage
+    
+}
+/**
  * @param {Array<string>} recipientsArray 
  * @returns {boolean}
  */
@@ -206,12 +274,18 @@ function createWebsocket(websocketPath) {
     }
     websocket.onmessage = (ev) => {
         const jsonMsg = JSON.parse(ev.data)
-        console.log(ev.data, "<<DAta")
+        console.log("Data Received:", ev.data)
         if (jsonMsg === "OK") return  // websocket is ready
 
         switch (jsonMsg.message) {
             case "message.received":
                 ws_messageReceived(jsonMsg.data)
+                break;
+            case "message.update":
+                ws_messageUpdate(jsonMsg.data)
+                break;
+            case "message.delete":
+                ws_messageDelete(jsonMsg.data)
                 break;
             case "ALIVE":
                 // Add a function to use this
@@ -236,39 +310,176 @@ function ws_keepAlive() {
 
 function ws_messageReceived(data) {
     const dataAsMap = new Map(Object.entries(data))
-    const newMessagesList = messagesMap.get(dataAsMap.get('sender_name'))
-    newMessagesList.push(dataAsMap)
+    const isSender = dataAsMap.get('sender_name') === sessionInfo.get('username')
+    let messagesList, currentChatName;
+    if (isSender) {
+        const recipientName = dataAsMap.get('recipient_name')
+        messagesList = messagesMap.get(recipientName)
+        currentChatName = recipientName
+    } else {
+        currentChatName = dataAsMap.get('sender_name')
+        messagesList = messagesMap.get(dataAsMap.get('sender_name'))
+    }
+    messagesList.push(dataAsMap)
 
     const topbarUsername = document.getElementsByClassName('topbar-recipient-username')[0]
-    if (topbarUsername.textContent === dataAsMap.get('sender_name')) {
-        appendMessage(dataAsMap)
+    if (topbarUsername.textContent === currentChatName) {
+        const options = new Map(Object.entries({
+            is_sender: isSender
+        }))
+        appendMessage(dataAsMap, options)
     }
 }
 
+function ws_messageUpdate(data) {
+    const dataAsMap = new Map(Object.entries(data))
+    let messagesList, currentChatName;
+    if (dataAsMap.get('sender_name') === sessionInfo.get('username')) {
+        const recipientName = dataAsMap.get('recipient_name')
+        messagesList = messagesMap.get(recipientName)
+        currentChatName = recipientName
+    } else {
+        currentChatName = dataAsMap.get('sender_name')
+        messagesList = messagesMap.get(dataAsMap.get('sender_name'))
+    }
+    messagesList.forEach((value) => {
+        const messageId = value.get('message_id')
+        if (messageId !== dataAsMap.get('message_id')) return
+
+        value.set("message_data", dataAsMap.get('message_data'))
+    })
+
+    const topbarUsername = document.getElementsByClassName('topbar-recipient-username')[0]
+    if (topbarUsername.textContent === currentChatName) {
+        updateMessage(dataAsMap)
+    }
+}
+function ws_messageDelete(data) {
+    const dataAsMap = new Map(Object.entries(data))
+    let messagesList, currentChatName;
+    if (dataAsMap.get('sender_name') === sessionInfo.get('username')) {
+        const recipientName = dataAsMap.get('recipient_name')
+        messagesList = messagesMap.get(recipientName)
+        currentChatName = recipientName
+    } else {
+        currentChatName = dataAsMap.get('sender_name')
+        messagesList = messagesMap.get(dataAsMap.get('sender_name'))
+    }
+    console.log(currentChatName)
+    const filtered = messagesList.filter((value) => {
+        const messageId = value.get('message_id')
+        if (messageId !== dataAsMap.get('message_id')) return true
+
+        return false
+    })
+    messagesMap.set(currentChatName, filtered)
+    deleteMessage(dataAsMap)
+}
 /**
- * @param {Map<string, string>} messageData 
+ * @param {Map<string, string>} messageData
+ * @param {Map<string, any>} options 
  */
-function appendMessage(messageData) {
-    const messagesBox = document.getElementById('messages-box')
+function appendMessage(messageData, options) {
+    console.log(messageData, options)
+    const messageId = messageData.get('message_id')
+    const messagesBox = document.getElementsByClassName('messages-box')[0]
 
     const messageItemDiv = document.createElement('div')
-    const messageUsernameText = document.createElement('p')
-
-    const messageDataText = document.createElement('p')
     messageItemDiv.classList.add('message-item')
+    messageItemDiv.classList.add(`message-${messageId}`)
 
+    const messageUsernameText = document.createElement('p')
     messageUsernameText.classList.add('message-username')
     messageUsernameText.textContent = messageData.get('sender_name')
 
-    messageDataText.textContent = messageData.get('message_data')
+    const messageDataText = document.createElement('p')
     messageDataText.classList.add('message-text')
+    messageDataText.textContent = messageData.get('message_data')
+
+    const showDialogButton = document.createElement('button')
+    showDialogButton.classList.add('options-button')
+    showDialogButton.textContent = '...'
+
+    const optionsDialog = document.createElement('dialog')
+    optionsDialog.classList.add('options-dialog')
+
+    const editMessageButton = document.createElement('button')
+    editMessageButton.classList.add('edit-message-button')
+    editMessageButton.textContent = 'Edit Message'
+
+    const deleteMessageButton = document.createElement('button')
+    deleteMessageButton.classList.add('delete-message-button')
+    deleteMessageButton.textContent = 'Delete Message'
+
+    showDialogButton.addEventListener('click', (ev) => {
+        if (optionsDialog.open) {
+            optionsDialog.style.display = 'none'
+            optionsDialog.close()
+        } else {
+            optionsDialog.style.display = 'flex'
+            optionsDialog.show()
+        }
+    })
+
+    editMessageButton.addEventListener('click', async (ev) => {
+        const originalMessage = messageData.get('message_data')
+        const editedMessage = prompt("New message:", originalMessage)
+
+        if (!editedMessage) return  // no data from user
+        if (editedMessage === originalMessage) return  // unchanged
+
+        const editSuccess = await updateChatMessage(messageId, editedMessage)
+        if (!editSuccess) return
+    })
+    deleteMessageButton.addEventListener('click', async (ev) => {
+        const deleteConfirmed = confirm("Delete this message?")
+        if (!deleteConfirmed) return
+
+        const deleteSuccess = await deleteChatMessage(messageId)
+        if (!deleteSuccess) return
+    })
 
     messageItemDiv.appendChild(messageUsernameText)
     messageItemDiv.appendChild(messageDataText)
 
+    if (options.get('is_sender')) {
+        optionsDialog.appendChild(editMessageButton)
+        optionsDialog.appendChild(deleteMessageButton)
+    
+        messageItemDiv.appendChild(showDialogButton)
+        messageItemDiv.appendChild(optionsDialog)
+    }
+
     messagesBox.appendChild(messageItemDiv)
 }
 
+/**
+ * 
+ * @param {Map<string, string>} messageData 
+ */
+function updateMessage(messageData) {
+    const messageId = messageData.get('message_id')
+    const recipientUser = messageData.get('recipient_user')
+
+    const messagesBox = document.getElementsByClassName('messages-box')[0]
+    const messageItemDiv = messagesBox.getElementsByClassName(`message-${messageId}`)[0]
+
+    const messageDataText = messageItemDiv.getElementsByClassName('message-text')[0]
+    messageDataText.textContent = messageData.get('message_data')
+}
+/**
+ * 
+ * @param {Map<string, string>} messageData 
+ */
+function deleteMessage(messageData) {
+    const messageId = messageData.get('message_id')
+    const recipientUser = messageData.get('recipient_user')
+
+    const messagesBox = document.getElementsByClassName('messages-box')[0]
+    const messageItemDiv = messagesBox.getElementsByClassName(`message-${messageId}`)[0]
+
+    messagesBox.removeChild(messageItemDiv)
+}
 /**
  * @param {MouseEvent} ev 
  * @param {string} username 
@@ -284,11 +495,17 @@ function switchToRecipient(ev, username) {
     const messageDataList = messagesMap.get(username)
     if (!username) throw new Error("Missing recipient username in messagesMap")
 
-    messageDataList.forEach((messageData) => appendMessage(messageData))
+    messageDataList.forEach((messageData) => {
+        const senderName = messageData.get('sender_name')
+        const options = new Map(Object.entries({
+            is_sender: senderName === username ? false : true
+        }))
+        appendMessage(messageData, options)
+    })
 }
 
 async function main() {
-    sessionInfo = await getSessionInfo()
+    sessionInfo = new Map(Object.entries(await getSessionInfo()))
     if (!sessionInfo) return
 
     const recipientsList = await getRecipientsList()
@@ -304,8 +521,14 @@ async function main() {
     if (!websocket) return
 }
 
+
 document.addEventListener('DOMContentLoaded', async (ev) => {
     const sendForm = document.getElementById('message-send-form')
+
+    /**
+     * @type {HTMLButtonElement}
+     */
+    const logoutButton = document.getElementsByClassName('logout-button')[0]
 
     sendForm.addEventListener('submit', async (event) => {
         event.preventDefault()
@@ -329,14 +552,11 @@ document.addEventListener('DOMContentLoaded', async (ev) => {
 
         const messageId = await sendChatMessage(topbarUsername.textContent, jsonFormData.message)
         if (!messageId) return
+    })
 
-        const messageData = await getMessageById(messageId)
-        if (!messageData) return
-
-        const newMessagesList = messagesMap.get(topbarUsername.textContent)
-        newMessagesList.push(messageData)
-
-        appendMessage(messageData)
+    logoutButton.addEventListener('click', async (event) => {
+        await safeFetch(fetch('/api/token/revoke_session', { method: 'POST' }))
+        window.location.href = '/'
     })
     await main()
 })

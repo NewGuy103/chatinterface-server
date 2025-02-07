@@ -54,6 +54,12 @@ async def app_lifespan(app: FastAPI) -> AsyncIterator[AppState]:
     logger.info("Application exiting")
 
 
+if settings.ENVIRONMENT == 'local':
+    use_debug = True
+else:
+    use_debug = False
+
+
 app: FastAPI = FastAPI(
     lifespan=app_lifespan,
     title="chatinterface-server",
@@ -63,7 +69,7 @@ app: FastAPI = FastAPI(
         'identifier': 'MPL-2.0',
         'url': 'https://www.mozilla.org/en-US/MPL/2.0/'
     },
-    debug=False
+    debug=use_debug
 )
 
 api_routers: APIRouter = APIRouter(prefix='/api')

@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "newguy103-chatinterface-server"
+version = "0.1.0"
+requires-python = ">= 3.10"
+dependencies = [
+    "mariadb",
+    "fastapi[standard]",
+    "argon2-cffi",
+    "sqlmodel",
+    "uvicorn[standard]",
+    "pydantic-settings"
+]
+authors = [
+    { name = "NewGuy103", email = "userchouenthusiast@gmail.com" }
+]
+description = "A simple centralized, self-hosted server for chatting."
+readme = "README.md"
+license = { text = "MPL-2.0" }
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+
+  "Intended Audience :: Developers",
+  "Topic :: Communications :: Chat",
+
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+
+  "Environment :: Console",
+  "Environment :: Web Environment",
+
+  "Framework :: FastAPI",
+  "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)"
+]
+
+[project.urls]
+Homepage = "https://github.com/newguy103/chatinterface-server"
+Repository = "https://github.com/newguy103/chatinterface-server.git"
+Issues = "https://github.com/newguy103/chatinterface-server/issues"
+Changelog = "https://github.com/NewGuy103/chatinterface-server/blob/main/CHANGES.md"

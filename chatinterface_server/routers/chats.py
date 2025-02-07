@@ -6,8 +6,11 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request, Query
 
+from ..models.dbtables import UserInstance
 from ..models.common import AppState
 from ..models.chats import ComposeMessage, EditMessage, SendMessage, MessagesGetPublic
+from ..models.ws import MessageDelete, MessageUpdate
+
 from ..dependencies import HttpAuthDep
 from ..internal import constants
 from ..internal.constants import WebsocketMessages
@@ -68,44 +71,53 @@ async def send_message(
     session: HttpAuthDep
 ) -> uuid.UUID:
     state: AppState = req.state
-    has_message: list | str = await state.db.messages.get_messages(
-        session.username, data.recipient,
-        amount=1
-    )
+    if data.recipient == session.username:
+        raise HTTPException(status_code=400, detail="Cannot send message to self")
 
-    match has_message:
-        case list() if has_message:
+    has_relation: bool | str = await state.db.messages.has_chat_relation(session.username, data.recipient)
+
+    match has_relation:
+        case True:
             pass
-        case list() if not has_message:
+        case False:
             raise HTTPException(status_code=409, detail="Cannot compose message from send_message")
         case constants.NO_RECIPIENT:
             raise HTTPException(status_code=404, detail="Recipient not found")
         case _:
-            logger.error("Unexpected data when checking if has_message: %s", has_message)
+            logger.error("Unexpected data when checking chat relation: %s", has_relation)
             raise HTTPException(status_code=500, detail="Server error")
 
-    message_id: str = await state.db.messages.store_message(
+    message_id: uuid.UUID = await state.db.messages.store_message(
         session.username, data.recipient,
         data.message_data
     )
 
+    match message_id:
+        case uuid.UUID():
+            pass
+        case _:
+            logger.error("Unexpected data when sending message: %s", message_id)
+            raise HTTPException(status_code=500, detail="Server error")
+
     current_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
 
-    # Using a model instead of a dict so its the same as
-    # the get_message return
+    # Using a model instead of a dict so its easy to update
     recipient_payload: MessagesGetPublic = MessagesGetPublic(
         sender_name=session.username,
+        recipient_name=data.recipient,
         message_data=data.message_data,
         send_date=current_time,
         message_id=message_id
     )
 
-    # Can't send a UUID as JSON directly, turning into a str first
-    dumped_model = recipient_payload.model_dump()
-    dumped_model['message_id'] = str(dumped_model["message_id"])
-
+    dumped_model = recipient_payload.model_dump(mode='json')
     await state.ws_clients.broadcast_message(
         data.recipient, WebsocketMessages.MESSAGE_RECEIVED,
+        dumped_model
+    )
+
+    await state.ws_clients.broadcast_message(
+        session.username, WebsocketMessages.MESSAGE_RECEIVED,
         dumped_model
     )
     return message_id
@@ -173,43 +185,75 @@ async def delete_message(
     session: HttpAuthDep
 ) -> dict:
     state: AppState = req.state
-    delete_result: str | int = await state.db.messages.delete_message(session.username, message_id)
+    recipient: str | UserInstance = await state.db.messages.delete_message(session.username, message_id)
 
-    match delete_result:
-        case 0:
+    match recipient:
+        case UserInstance():
             pass
         case constants.INVALID_MESSAGE:
             raise HTTPException(status_code=404, detail="Invalid message ID or not message owner")
         case _: 
             logger.error(
                 "Deleting message ID [%s] failed due to unexpected result: %s", 
-                message_id, delete_result
+                message_id, recipient
             )
             raise HTTPException(status_code=500, detail="Server error")
-    
+
+    model_payload: MessageDelete = MessageDelete(
+        sender_name=session.username,
+        recipient_name=recipient.username,
+        message_id=str(message_id)
+    )
+    dumped_model = model_payload.model_dump(mode='json')
+
+    await state.ws_clients.broadcast_message(
+        recipient.username, WebsocketMessages.MESSAGE_DELETE,
+        dumped_model
+    )
+    await state.ws_clients.broadcast_message(
+        session.username, WebsocketMessages.MESSAGE_DELETE,
+        dumped_model
+    )
     return {'success': True}
 
 
 @router.patch('/edit_message/{message_id}')
 async def edit_message(
     message_id: uuid.UUID,
-    message_data: EditMessage,
+    data: EditMessage,
     req: Request,
     session: HttpAuthDep
 ) -> dict:
     state: AppState = req.state
-    edit_result: str | int = await state.db.messages.edit_message(
+    recipient: str | UserInstance = await state.db.messages.edit_message(
         session.username, message_id,
-        message_data.message_data
+        data.message_data
     )
 
-    match edit_result:
-        case 0:
+    match recipient:
+        case UserInstance():
             pass
         case constants.INVALID_MESSAGE:
             raise HTTPException(status_code=404, detail="Invalid message ID provided")
         case _: 
-            logger.error("Editing message ID [%s] failed due to unexpected result: %s", message_id, edit_result)
+            logger.error("Editing message ID [%s] failed due to unexpected result: %s", message_id, recipient)
             raise HTTPException(status_code=500, detail="Server error")
 
+    # seems too much for just one item but this is to make it easier to expand next time
+    model_payload: MessageUpdate = MessageUpdate(
+        message_data=data.message_data,
+        sender_name=session.username,
+        recipient_name=recipient.username,
+        message_id=str(message_id)
+    )
+    dumped_model = model_payload.model_dump(mode='json')
+
+    await state.ws_clients.broadcast_message(
+        recipient.username, WebsocketMessages.MESSAGE_UPDATE,
+        dumped_model
+    )
+    await state.ws_clients.broadcast_message(
+        session.username, WebsocketMessages.MESSAGE_UPDATE,
+        dumped_model
+    )
     return {'success': True}

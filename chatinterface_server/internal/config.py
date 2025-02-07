@@ -2,19 +2,22 @@ import os
 import json
 import logging.config
 
+from typing import Literal
+
 from pydantic import computed_field, MariaDBDsn
 from pydantic_core import MultiHostUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from ..version import __version__
 
 APP_NAME: str = "chatinterface-server"
-DEFAULT_MAIN_CONFIG: dict = {}  # will use soon
-DEFAULT_APP_DIR: str = os.path.join("/", "opt", APP_NAME)
+DEFAULT_APP_DIR: str = os.path.join(".", f"{APP_NAME}_config")
 
 
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict()
 
+    ENVIRONMENT: Literal['local', 'development', 'production'] = 'local'
     MARIADB_HOST: str = '127.0.0.1'
     MARIADB_PORT: int = 3306
 
@@ -136,9 +139,6 @@ class ConfigManager:
         self.conf_dir: str = conf_dir
 
         self.conf_maker: ConfigMaker = ConfigMaker(self.log_dir, self.conf_dir)
-        main_config_file: str = os.path.join(self.conf_dir, 'main.json')
-
-        main_config: dict = load_or_create_config(main_config_file, DEFAULT_MAIN_CONFIG)  # noqa
 
     def setup_logging(self, log_level: str = "INFO") -> None:
         log_config_file: str = os.path.join(self.conf_dir, 'log.json')

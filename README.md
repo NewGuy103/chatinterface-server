@@ -27,19 +27,19 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Usage
+There is also a container image published on the GitHub container registry if you use Docker or other containerization platforms.
 
-The environment variable `CHATINTERFACE_BASEDIR` must be set to a valid directory, this is
-where configuration files and logs will be stored.
+## Usage
 
 To run the application:
 
-`uvicorn chatinterface_server:app`
+`uvicorn chatinterface_server.main:app`
 
-This will also work for the cloned environment, but you must execute this
-in the cloned environment's directory.
+This will also work for the cloned environment, but you must execute this in the cloned environment's directory.
 
 You can also pass command-line arguments to `uvicorn`.
+
+If you cloned the repository directly, you can also use the `fastapi` command to run the application.
 
 ## Disclaimer
 

@@ -54,7 +54,7 @@ class WebsocketClients:
                 try:
                     await ws.send_json(broadcasted_message)
                 except (RuntimeError, WebSocketDisconnect) as e:  # socket already closed
-                    logging.warning(
+                    logger.warning(
                         "Could not broadcast message to socket on %s with session token %s",
                         connecting_host, token, exc_info=e
                     )
@@ -101,7 +101,7 @@ class WebsocketClients:
             await websocket.send_json(broadcasted_message)
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         except (RuntimeError, WebSocketDisconnect) as e:
-            logging.warning(
+            logger.warning(
                 "Could not close websocket on %s", connecting_host,
                 exc_info=e
             )

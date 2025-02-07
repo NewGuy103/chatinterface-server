@@ -13,7 +13,7 @@ from sqlalchemy import Engine
 
 from . import constants
 from ..models.dbtables import (
-    Users, UserSessions, Messages, UserChatRelations
+    Users, UserSessions, Messages, UserChatRelations, UserInstance
 )
 from ..models.chats import MessagesGetPublic
 
@@ -27,10 +27,12 @@ def async_threaded(func):
     async def wrapper(self, *args, **kwargs):
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
         partial_func: partial = partial(func, self, *args, **kwargs)
-
+        
         try:
             return await loop.run_in_executor(self.executor, partial_func) 
         except Exception:
+            func_name: str = func.__name__
+            logger.exception("Database call failed on function [%s]:", func_name)
             raise
     
     return wrapper
@@ -142,9 +144,6 @@ class UserMethods:
             self.pw_hasher.verify(user.hashed_password, password)
         except (argon2.exceptions.VerificationError, argon2.exceptions.VerifyMismatchError):
             return constants.INVALID_TOKEN
-        except Exception:
-            logging.exception("[verify_user]: Argon2-cffi exception:")
-            raise  # ideally fail
         
         return 0
 
@@ -313,7 +312,40 @@ class ChatMethods:
         return sender_names | recipient_names
 
     @async_threaded
-    def store_message(self, sender: str, recipient: str, message_data: str) -> str:
+    def has_chat_relation(self, sender: str, recipient: str) -> str | bool:
+        if not isinstance(sender, str):
+            raise TypeError("sender username is not a string")
+        
+        if not isinstance(recipient, str):
+            raise TypeError("recipient username is not a string")
+
+        sender_id: uuid.UUID = self.get_userid(sender)
+        recipient_id: uuid.UUID = self.get_userid(recipient)
+
+        if not sender_id:
+            return constants.NO_SENDER
+
+        if not recipient_id:
+            return constants.NO_RECIPIENT
+
+        with Session(self.engine) as session:
+            has_sender_relation: UserChatRelations | None = session.exec(select(UserChatRelations).where(
+                UserChatRelations.sender_id == sender_id,
+                UserChatRelations.recipient_id == recipient_id
+            )).one_or_none()
+
+            has_recipient_relation: UserChatRelations | None = session.exec(select(UserChatRelations).where(
+                UserChatRelations.sender_id == recipient_id,
+                UserChatRelations.recipient_id == sender_id
+            )).one_or_none()
+        
+        if has_sender_relation or has_recipient_relation:
+            return True
+        else:
+            return False
+
+    @async_threaded
+    def store_message(self, sender: str, recipient: str, message_data: str) -> uuid.UUID | str:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
         
@@ -358,7 +390,7 @@ class ChatMethods:
             session.add(new_message)
             session.commit()
 
-        return str(message_id)
+        return message_id
 
     @async_threaded
     def get_messages(self, sender: str, recipient: str, amount: int = 100) -> str | list[MessagesGetPublic]:
@@ -417,13 +449,16 @@ class ChatMethods:
             for message in result:
                 if message.sender_id == sender_id:
                     sender_name: str = sender_user.username
+                    recipient_name: str = recipient_user.username
                 elif message.sender_id == recipient_id:
                     sender_name: str = recipient_user.username
+                    recipient_name: str = sender_user.username
                 else:
                     raise RuntimeError('sender_name invalid')
 
                 message_public: MessagesGetPublic = MessagesGetPublic(
                     sender_name=sender_name,
+                    recipient_name=recipient_name,
                     message_data=message.message_data,
                     send_date=datetime.strftime(message.send_date, "%Y-%m-%d %H:%M:%S"),
                     message_id=str(message.message_id)
@@ -475,7 +510,7 @@ class ChatMethods:
         )
 
     @async_threaded
-    def delete_message(self, sender: str, message_id: uuid.UUID) -> str | int:
+    def delete_message(self, sender: str, message_id: uuid.UUID) -> str | UserInstance:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
 
@@ -496,14 +531,21 @@ class ChatMethods:
 
             if not message:
                 return constants.INVALID_MESSAGE
-            
+
+            recipient: Users = session.exec(
+                select(Users).where(Users.user_id == message.recipient_id)
+            ).one()
+            dumped_model = recipient.model_dump()
+
             session.delete(message)
             session.commit()
+
+            recipient_datamodel = UserInstance(**dumped_model)
         
-        return 0
+        return recipient_datamodel
 
     @async_threaded
-    def edit_message(self, sender: str, message_id: uuid.UUID, message_data: str) -> str | int:
+    def edit_message(self, sender: str, message_id: uuid.UUID, message_data: str) -> str | UserInstance:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
 
@@ -531,11 +573,19 @@ class ChatMethods:
             if not message:
                 return constants.INVALID_MESSAGE
 
+            recipient: Users = session.exec(
+                select(Users).where(Users.user_id == message.recipient_id)
+            ).one()
+
+            dumped_model = recipient.model_dump()
             message.message_data = message_data
+            
             session.add(message)
             session.commit()
-        
-        return 0
+
+            recipient_datamodel = UserInstance(**dumped_model)
+
+        return recipient_datamodel
 
 
 if __name__ == "__main__":

@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', path='css/root_path.css') }}">
     <script src="{{ url_for('static', path='/js/root_path.js') }}"></script>
-    <title>Chatinterface</title>
+    <title>Chatinterface Web Client</title>
 </head>
 <body>
     <header>
         <div id="header-text-div">
             <p id="header-text">Chatinterface Web Client</p>
         </div>
+        <button class="logout-button">Logout</button>
     </header>
     <main>
         <div class="sidebar-flex-column">
@@ -22,7 +23,7 @@
         </div>
         <div class="main-flex-column">
             <div class="recipient-topbar">
-                <p class="topbar-recipient-username">{username}</p>
+                <p class="topbar-recipient-username">Username goes here...</p>
             </div>
             <div class="messages-box" id="messages-box">
             </div>

@@ -17,4 +17,6 @@ INVALID_MESSAGE = "INVALID_MESSAGE"
 
 class WebsocketMessages(StrEnum):
     MESSAGE_RECEIVED = 'message.received'
+    MESSAGE_UPDATE = 'message.update'
+    MESSAGE_DELETE = 'message.delete'
     AUTH_REVOKED = 'auth.revoked'
