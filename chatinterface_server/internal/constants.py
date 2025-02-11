@@ -19,4 +19,5 @@ class WebsocketMessages(StrEnum):
     MESSAGE_RECEIVED = 'message.received'
     MESSAGE_UPDATE = 'message.update'
     MESSAGE_DELETE = 'message.delete'
+    MESSAGE_COMPOSE = 'message.compose'
     AUTH_REVOKED = 'auth.revoked'

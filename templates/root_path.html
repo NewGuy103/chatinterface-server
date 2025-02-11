@@ -15,9 +15,38 @@
         <button class="logout-button">Logout</button>
     </header>
     <main>
+        <script>
+            function openDialog() {
+                /**
+                 * @type {HTMLDialogElement}
+                */
+                const dialog = document.getElementById('xyz')
+                const closebtn = document.getElementById('closexyz')
+                dialog.showModal()
+
+                closebtn.addEventListener('click', (ev) => {
+                    dialog.close()
+                })
+            }
+        </script>
         <div class="sidebar-flex-column">
             <div class="compose-message-box">
-                <button>Compose new message</button>
+                <button class="compose-message-button">Compose new message</button>
+                <dialog class="compose-dialog">
+                    <p>Compose a new message to another user</p>
+                    <form class="compose-dialog-form">
+                        <label for="recipient">Enter username:</label>
+                        <input type="text" name="recipient" required>
+
+                        <label for="message">Enter your message:</label>
+                        <textarea name="message" required></textarea>
+                        
+                        <div class="button-row-dialog">
+                            <button type="reset" class="dialog-cancel-button">Cancel</button>
+                            <button type="submit" class="dialog-submit-button">Send message</button>
+                        </div>
+                    </form>
+                </dialog>
             </div>
             <div class="recipients" id="recipients"></div>
         </div>

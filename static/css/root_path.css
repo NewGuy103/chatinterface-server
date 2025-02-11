@@ -20,6 +20,7 @@ header {
     display: flex;
 
     background-color: white;
+    justify-content: space-between;
 }
 main {
     display: flex;
@@ -149,7 +150,7 @@ main {
 }
 .logout-button {
     width: min-content;
-    margin-left: auto;
+    /* margin-left: auto; */
     margin-right: 40px;
     margin-top: 5px;
     margin-bottom: 5px;
@@ -171,4 +172,21 @@ main {
     width: min-content;
     position: relative;
     margin-left: 10px;
+}
+.compose-dialog-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    * {
+        font-family: Arial, Helvetica, sans-serif;
+    }
+    & > .button-row-dialog {
+        & > button {
+            height: 25px;
+            width: max-content;
+        }
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+    }
 }

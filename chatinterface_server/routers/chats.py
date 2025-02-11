@@ -133,23 +133,50 @@ async def compose_new_message(
     if data.recipient == session.username:
         raise HTTPException(status_code=400, detail="Cannot send message to self")
 
-    has_message: list | str = await state.db.messages.get_messages(session.username, data.recipient, amount=1)
-    match has_message:
-        case list() if has_message:
+    has_relation: bool | str = await state.db.messages.has_chat_relation(session.username, data.recipient)
+
+    match has_relation:
+        case False:
+            pass
+        case True:
             raise HTTPException(status_code=409, detail="Existing conversation exists")
         case constants.NO_RECIPIENT:
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(status_code=404, detail="Recipient not found")
+        case _:
+            logger.error("Unexpected data when checking chat relation: %s", has_relation)
+            raise HTTPException(status_code=500, detail="Server error")
 
-    message_id: str | int = await state.db.messages.store_message(
+    message_id: uuid.UUID = await state.db.messages.store_message(
         session.username, data.recipient, data.message_data
     )
     match message_id:
-        case str():
+        case uuid.UUID():
             pass
         case _:
-            logger.error("Unexpected data while sending message: %s", message_id)
+            logger.error("Unexpected data while composing message: %s", message_id)
             raise HTTPException(status_code=500, detail="Server error")
 
+    current_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
+
+    # Using a model instead of a dict so its easy to update
+    recipient_payload: MessagesGetPublic = MessagesGetPublic(
+        sender_name=session.username,
+        recipient_name=data.recipient,
+        message_data=data.message_data,
+        send_date=current_time,
+        message_id=message_id
+    )
+
+    dumped_model = recipient_payload.model_dump(mode='json')
+    await state.ws_clients.broadcast_message(
+        data.recipient, WebsocketMessages.MESSAGE_COMPOSE,
+        dumped_model
+    )
+
+    await state.ws_clients.broadcast_message(
+        session.username, WebsocketMessages.MESSAGE_COMPOSE,
+        dumped_model
+    )
     return message_id
 
 

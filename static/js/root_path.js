@@ -240,6 +240,38 @@ async function deleteChatMessage(messageId) {
     
 }
 /**
+ * @param {string} recipientName 
+ * @param {string} messageData 
+ * @returns {Promise<string>} Returns a UUID.
+ */
+async function composeChatMessage(recipientName, messageData) {
+    const reqBody = JSON.stringify({
+        'recipient': recipientName,
+        'message_data': messageData
+    })
+    const fetchCall = fetch('/api/chats/compose_message', {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json', 'accept': 'application/json' },
+        body: reqBody
+    })
+
+    const [ response, error ] = await safeFetch(fetchCall)
+    if (error) {
+        console.error(`[composeChatMessage] Request failed: ${error}`)
+        alert(`[composeChatMessage] Request failed: ${error}`)
+        return null
+    }
+    if (!response.ok) {
+        console.error(`[composeChatMessage] Failed with non-OK status code: ${response.status}`)
+        alert(`[composeChatMessage] Failed with non-OK status code: ${response.status} `)
+        return null
+    }
+
+    const successMessage = await response.json()
+    return successMessage
+    
+}
+/**
  * @param {Array<string>} recipientsArray 
  * @returns {boolean}
  */
@@ -247,21 +279,27 @@ function addRecipients(recipientsArray) {
     const recipientsBox = document.getElementById('recipients')
     if (!recipientsBox) throw new Error("Recipients box not found")
 
-    recipientsArray.forEach(username => {
-        const recipientItemDiv = document.createElement('div')
-        const recipientNameText = document.createElement('p')
-
-        recipientItemDiv.classList.add('recipient-item')
-        recipientNameText.classList.add('recipient-username')
-
-        recipientNameText.textContent = username
-        recipientItemDiv.appendChild(recipientNameText)
-
-        recipientsBox.appendChild(recipientItemDiv)
-        recipientItemDiv.addEventListener("click", (ev) => switchToRecipient(ev, username))
-    })
-
+    recipientsArray.forEach(username => appendRecipient(username))
     return true
+}
+
+/**
+ * @param {string} username 
+ */
+function appendRecipient(username) {
+    const recipientsBox = document.getElementById('recipients')
+
+    const recipientItemDiv = document.createElement('div')
+    const recipientNameText = document.createElement('p')
+
+    recipientItemDiv.classList.add('recipient-item')
+    recipientNameText.classList.add('recipient-username')
+
+    recipientNameText.textContent = username
+    recipientItemDiv.appendChild(recipientNameText)
+
+    recipientsBox.appendChild(recipientItemDiv)
+    recipientItemDiv.addEventListener("click", (ev) => switchToRecipient(ev, username))
 }
 
 /**
@@ -287,11 +325,14 @@ function createWebsocket(websocketPath) {
             case "message.delete":
                 ws_messageDelete(jsonMsg.data)
                 break;
+            case "message.compose":
+                ws_messageCompose(jsonMsg.data)
+                break;
             case "ALIVE":
                 // Add a function to use this
                 break;
             default:
-                console.error(`Invalid websocket message received: ${jsonMsg.message}`)
+                console.error(`Invalid websocket message received: ${jsonMsg.message} | ${ev.data}`)
                 break;
         }
     }
@@ -375,6 +416,20 @@ function ws_messageDelete(data) {
     messagesMap.set(currentChatName, filtered)
     deleteMessage(dataAsMap)
 }
+function ws_messageCompose(data) {
+    const dataAsMap = new Map(Object.entries(data))
+    const dataArray = [dataAsMap]
+    let currentChatName;
+    
+    if (dataAsMap.get('sender_name') === sessionInfo.get('username')) {
+        currentChatName = dataAsMap.get('recipient_name')
+    } else {
+        currentChatName = dataAsMap.get('sender_name')
+    }
+    messagesMap.set(currentChatName, dataArray)
+    receiveComposedMessage(dataAsMap)
+}
+
 /**
  * @param {Map<string, string>} messageData
  * @param {Map<string, any>} options 
@@ -473,13 +528,28 @@ function updateMessage(messageData) {
  */
 function deleteMessage(messageData) {
     const messageId = messageData.get('message_id')
-    const recipientUser = messageData.get('recipient_user')
 
     const messagesBox = document.getElementsByClassName('messages-box')[0]
     const messageItemDiv = messagesBox.getElementsByClassName(`message-${messageId}`)[0]
 
     messagesBox.removeChild(messageItemDiv)
 }
+/**
+ * @param {Map<string, string>} messageData 
+ */
+function receiveComposedMessage(messageData) {
+    let currentChatName;
+    
+    if (messageData.get('sender_name') === sessionInfo.get('username')) {
+        currentChatName = messageData.get('recipient_name')
+        
+    } else {
+        currentChatName = messageData.get('sender_name')
+    }
+
+    appendRecipient(currentChatName)
+}
+
 /**
  * @param {MouseEvent} ev 
  * @param {string} username 
@@ -524,11 +594,22 @@ async function main() {
 
 document.addEventListener('DOMContentLoaded', async (ev) => {
     const sendForm = document.getElementById('message-send-form')
+    const composeMessageButton = document.getElementsByClassName('compose-message-button')[0]
 
     /**
      * @type {HTMLButtonElement}
      */
     const logoutButton = document.getElementsByClassName('logout-button')[0]
+
+    /**
+     * @type {HTMLDialogElement}
+     */
+    const composeDialog = document.getElementsByClassName('compose-dialog')[0]
+
+    /**
+     * @type {HTMLFormElement}
+     */
+    const composeDialogForm = document.getElementsByClassName('compose-dialog-form')[0]
 
     sendForm.addEventListener('submit', async (event) => {
         event.preventDefault()
@@ -554,6 +635,31 @@ document.addEventListener('DOMContentLoaded', async (ev) => {
         if (!messageId) return
     })
 
+    composeMessageButton.addEventListener('click', (ev) => composeDialog.showModal())
+    composeDialogForm.addEventListener('reset', (ev) => {
+        composeDialog.close()
+    })
+    composeDialogForm.addEventListener('submit', async (ev) => {
+        ev.preventDefault()
+        composeDialog.close()
+        const formData = new FormData(composeDialogForm)
+        const jsonFormData = {}
+
+        formData.forEach((val, key) => {
+            jsonFormData[key] = val
+        })
+
+        if (!jsonFormData.recipient || !jsonFormData.message) return
+        // clears the form
+        for (let element of composeDialogForm.elements) {
+            if (element.type !== "submit" && element.type !== "button") {
+              element.value = "";
+            }
+        }
+
+        const messageId = await composeChatMessage(jsonFormData.recipient, jsonFormData.message)
+        if (!messageId) return
+    })
     logoutButton.addEventListener('click', async (event) => {
         await safeFetch(fetch('/api/token/revoke_session', { method: 'POST' }))
         window.location.href = '/'
