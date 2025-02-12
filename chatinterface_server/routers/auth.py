@@ -10,6 +10,7 @@ from ..dependencies import HttpAuthDep
 
 from ..internal import constants
 from ..internal.constants import WebsocketMessages
+from ..internal.config import settings
 
 router = APIRouter(prefix="/token", tags=['auth'])
 logger: logging.Logger = logging.getLogger("chatinterface_server")
@@ -41,10 +42,22 @@ async def cookie_login(
     str_date: str = datetime.strftime(expires_on, "%Y-%m-%d %H:%M:%S")
     token: str = await state.db.users.create_session(form_data.username, str_date)
 
+    if settings.ENVIRONMENT == 'local':
+        secure = False
+        httponly = False
+        samesite = 'none'
+    else:
+        secure = True
+        httponly = True
+        samesite = 'lax'
+
     res.set_cookie(
         key="authorization", value=token,
         expires=expires_on,
-        max_age=int(expire_offset.total_seconds())
+        max_age=int(expire_offset.total_seconds()),
+        secure=secure,
+        httponly=httponly,
+        samesite=samesite
     )
 
     return {'success': True}
