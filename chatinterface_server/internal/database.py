@@ -19,7 +19,7 @@ from ..models.chats import MessagesGetPublic
 
 from .config import settings
 
-logger: logging.Logger = logging.getLogger("chatinterface.logger.database")
+logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 
 def async_threaded(func):
@@ -101,7 +101,7 @@ class UserMethods:
         self.executor = parent.executor
 
     @async_threaded
-    def add_user(self, username: str, password: str) -> str | int:
+    def add_user(self, username: str, password: str) -> str | bool:
         if not isinstance(username, str):
             raise TypeError("username is not a string")
 
@@ -111,8 +111,8 @@ class UserMethods:
         if len(username) > 20:
             raise ValueError("username is too long (over 20 characters)")
         
-        user_data: uuid.UUID = self.get_userid(username)
-        if user_data:
+        user_id: uuid.UUID = self.get_userid(username)
+        if user_id:
             return constants.USER_EXISTS
 
         hashed_pw: str = self.pw_hasher.hash(password)
@@ -122,7 +122,41 @@ class UserMethods:
             session.add(new_user)
             session.commit()
 
-        return 0
+        return True
+
+    @async_threaded
+    def delete_user(self, username: str) -> str | bool:
+        if not isinstance(username, str):
+            raise TypeError("username is not a string")
+
+        if len(username) > 20:
+            raise ValueError("username is too long (over 20 characters)")
+        
+        user_id: uuid.UUID = self.get_userid(username)
+        if not user_id:
+            return constants.NO_USER
+
+        with Session(self.engine) as session:
+            user: Users = session.exec(
+                select(Users).where(Users.user_id == user_id)
+            ).one()
+            session.delete(user)
+            session.commit()
+
+        return True
+
+    @async_threaded
+    def get_users(self) -> list:
+        statement = select(Users)
+        with Session(self.engine) as session:
+            result = session.exec(statement)
+            users = result.all()
+
+        user_list: list[str] = []
+        for user in users:
+            user_list.append(user.username)
+        
+        return user_list
 
     @async_threaded
     def verify_user(self, username: str, password: str) -> str | int:

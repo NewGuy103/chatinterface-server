@@ -3,7 +3,7 @@ import logging
 
 from fastapi import WebSocket, WebSocketDisconnect, status
 
-logger: logging.Logger = logging.getLogger("chatinterface.logger.ws")
+logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 
 class WebsocketClients:
@@ -74,6 +74,15 @@ class WebsocketClients:
 
         for ws in session_dict[token]:
             await self.disconnect_client(username, token, ws, message_name, message_data)
+
+    async def disconnect_all_clients(self, username: str, message_name: str, message_data: str):
+        if username not in self.clients:
+            return
+
+        session_dict = self.clients[username]
+        for token in session_dict.keys():
+            await self.disconnect_clients_by_token(username, token, message_name, message_data)
+
 
     async def disconnect_client(
             self, username: str, token: str,

@@ -12,7 +12,7 @@ from ..internal import constants
 from ..internal.constants import WebsocketMessages
 
 router = APIRouter(prefix="/token", tags=['auth'])
-logger: logging.Logger = logging.getLogger("chatinterface.logger.auth")
+logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 
 @router.post("/")

@@ -16,7 +16,7 @@ from ..internal import constants
 from ..internal.constants import WebsocketMessages
 
 router = APIRouter(prefix="/chats", tags=['chats'])
-logger: logging.Logger = logging.getLogger("chatinterface.logger.ws")
+logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 
 @router.get("/retrieve_recipients")

@@ -328,6 +328,9 @@ function createWebsocket(websocketPath) {
             case "message.compose":
                 ws_messageCompose(jsonMsg.data)
                 break;
+            case "auth.revoked":
+                ws_authRevoked()
+                break;
             case "ALIVE":
                 // Add a function to use this
                 break;
@@ -428,6 +431,10 @@ function ws_messageCompose(data) {
     }
     messagesMap.set(currentChatName, dataArray)
     receiveComposedMessage(dataAsMap)
+}
+function ws_authRevoked() {
+    alert("You have been logged out, please login again.")
+    window.location.href = "/frontend/login"
 }
 
 /**

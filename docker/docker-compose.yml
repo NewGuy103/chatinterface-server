@@ -15,6 +15,8 @@ services:
     #   context: ..
     #   dockerfile: docker/Dockerfile
     container_name: chatinterface_server
+    volumes:
+      - ./chatinterface_server:/app/chatinterface-server_config:rw
     environment:
       - MARIADB_HOST=mariadb
       - MARIADB_PORT=3306

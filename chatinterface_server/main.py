@@ -16,14 +16,14 @@ from .internal.database import MainDatabase
 from .internal.ws import WebsocketClients
 
 from .models.common import AppState
-from .routers import auth, chats, frontend, ws
+from .routers import auth, chats, frontend, ws, users
 
 from .version import __version__
 
 config: ConfigManager = ConfigManager()
 config.setup_logging()
 
-logger: logging.Logger = logging.getLogger("chatinterface.logger.main")
+logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 
 @asynccontextmanager
@@ -77,6 +77,8 @@ api_routers.include_router(auth.router)
 
 api_routers.include_router(chats.router)
 api_routers.include_router(ws.router) 
+
+api_routers.include_router(users.router)
 
 app.include_router(api_routers)
 app.include_router(frontend.router)

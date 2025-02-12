@@ -12,7 +12,7 @@ from ..models.ws import MessageData
 from ..dependencies import get_session_info_ws
 
 router: APIRouter = APIRouter(prefix="/ws", tags=['websocket'])
-logger: logging.Logger = logging.getLogger("chatinterface.logger.ws")
+logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 
 @router.websocket("/chat")

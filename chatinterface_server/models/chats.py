@@ -1,9 +1,8 @@
 import uuid
 from typing import Annotated
 from pydantic import BaseModel, Field
+from .common import UsernameField
 
-
-UsernameField = Annotated[str, Field(max_length=20, min_length=1)]
 MessageDataField = Annotated[str, Field(max_length=2000, min_length=1)]
 
 class ComposeMessage(BaseModel):

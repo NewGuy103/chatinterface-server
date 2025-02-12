@@ -7,7 +7,7 @@ from ..dependencies import SessionOrRedirectDep
 from ..models.common import AppState, SessionInfo
 
 router: APIRouter = APIRouter(prefix="/frontend", tags=['frontend'])
-logger: logging.Logger = logging.getLogger("chatinterface.logger.frontend")
+logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 
 @router.get('/', response_class=HTMLResponse)
