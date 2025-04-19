@@ -5,15 +5,16 @@ services:
   mariadb:
     image: mariadb:lts
     container_name: mariadb
+    hostname: mariadb
     volumes:
       - mariadb_data:/var/lib/mysql:rw
     environment:
       - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1
   chatinterface_server:
-    image: ghcr.io/newguy103/chatinterface-server:latest
-    # build:
-    #   context: ..
-    #   dockerfile: docker/Dockerfile
+    # image: ghcr.io/newguy103/chatinterface-server:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: chatinterface_server
     volumes:
       - ./chatinterface_server:/app/chatinterface-server_config:rw
@@ -23,5 +24,6 @@ services:
       - MARIADB_DBNAME=chatinterface_server
       - MARIADB_USER=chatinterface_server
       - MARIADB_PASSWORD=
+      - ENVIRONMENT=production
     ports:
       - 8000:8000

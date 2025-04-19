@@ -271,7 +271,7 @@ class UserMethods:
             user: Users = users_result.one()
 
         current_date: datetime = datetime.now()
-        expired: bool = user_session.expires_on > current_date
+        expired: bool = user_session.expires_on < current_date
 
         return {
             'created_at': datetime.strftime(user_session.created_at, "%Y-%m-%d %H:%M:%S"),

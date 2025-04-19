@@ -108,7 +108,8 @@ class ConfigManager:
                     "level": "INFO",
                     "propagate": True
                 }
-            }
+            },
+            'disable_existing_loggers': False
         }
 
     def setup_logging(self) -> None:

@@ -43,3 +43,8 @@ Homepage = "https://github.com/newguy103/chatinterface-server"
 Repository = "https://github.com/newguy103/chatinterface-server.git"
 Issues = "https://github.com/newguy103/chatinterface-server/issues"
 Changelog = "https://github.com/NewGuy103/chatinterface-server/blob/main/CHANGES.md"
+
+
+[tool.setuptools]
+package-dir = {"chatinterface_server" = "app"}
+packages = ["chatinterface_server"]

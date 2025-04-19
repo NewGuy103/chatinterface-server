@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.licenses=MPL-2.0
 WORKDIR /app
 
 RUN mkdir /opt/chatinterface-server
-COPY chatinterface_server /app/chatinterface_server/
+COPY app /app/app/
 
 COPY requirements.txt /app/
 COPY static /app/static
@@ -15,5 +15,5 @@ COPY templates /app/templates
 RUN pip install --no-cache-dir --no-input -r requirements.txt
 EXPOSE 8000
 
-ENTRYPOINT [ "fastapi", "run", "chatinterface_server/main.py" ]
+ENTRYPOINT [ "fastapi", "run", "app/main.py" ]
 CMD [ "--host", "0.0.0.0", "--port", "8000" ]

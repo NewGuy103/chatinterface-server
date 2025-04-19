@@ -17,6 +17,7 @@ async function loginToServer(formData) {
         return
     }
 
+    const resData = await response.json()
     switch (response.status) {
         case 200:
             loginResponseStatus.textContent = "Login successful! Now redirecting..."            

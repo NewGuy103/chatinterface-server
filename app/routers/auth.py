@@ -45,7 +45,8 @@ async def cookie_login(
     if settings.ENVIRONMENT == 'local':
         secure = False
         httponly = False
-        samesite = 'none'
+        # samesite is 'lax' and not 'none' due to secure attribute not being set
+        samesite = 'lax'
     else:
         secure = True
         httponly = True
