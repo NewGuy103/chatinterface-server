@@ -15,7 +15,7 @@ argon2-cffi==23.1.0
     # via -r requirements.in
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-certifi==2025.1.31
+certifi==2025.4.26
     # via
     #   httpcore
     #   httpx
@@ -34,13 +34,13 @@ fastapi[standard]==0.115.12
     # via -r requirements.in
 fastapi-cli[standard]==0.0.7
     # via fastapi
-greenlet==3.2.0
+greenlet==3.2.1
     # via sqlalchemy
-h11==0.14.0
+h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-httpcore==1.0.8
+httpcore==1.0.9
     # via httpx
 httptools==0.6.4
     # via uvicorn
@@ -61,7 +61,7 @@ markupsafe==3.0.2
     # via jinja2
 mdurl==0.1.2
     # via markdown-it-py
-packaging==24.2
+packaging==25.0
     # via mariadb
 pycparser==2.22
     # via cffi
@@ -88,7 +88,7 @@ rich==14.0.0
     # via
     #   rich-toolkit
     #   typer
-rich-toolkit==0.14.1
+rich-toolkit==0.14.3
     # via fastapi-cli
 shellingham==1.5.4
     # via typer
