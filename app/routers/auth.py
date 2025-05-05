@@ -3,13 +3,13 @@ from typing import Annotated
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestFormStrict
 
 from ..models.common import AppState
-from ..dependencies import HttpAuthDep
+from ..dependencies import HttpAuthDep, SessionDep
 
-from ..internal import constants
-from ..internal.constants import WebsocketMessages
+from ..internal.database import database
+from ..internal.constants import WebsocketMessages, DBReturnCodes
 from ..internal.config import settings
 
 router = APIRouter(prefix="/token", tags=['auth'])
@@ -18,19 +18,18 @@ logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 @router.post("/")
 async def cookie_login(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    req: Request, res: Response
+    form_data: Annotated[OAuth2PasswordRequestFormStrict, Depends()], 
+    res: Response,
+    session: SessionDep
 ) -> dict:
     if len(form_data.username) > 20:
         raise HTTPException(status_code=400, detail="Username too long")
 
-    state: AppState = req.state
-    result: str | int = await state.db.users.verify_user(form_data.username, form_data.password)
-
+    result: str | int = await database.users.verify_user(session, form_data.username, form_data.password)
     match result:
         case 0: 
             pass
-        case constants.INVALID_TOKEN | constants.NO_USER:
+        case DBReturnCodes.INVALID_TOKEN | DBReturnCodes.NO_USER:
             raise HTTPException(status_code=401, detail="Incorrect username or password")
         case _:
             logger.exception("Unexpected data while retrieving session token: %s", result)
@@ -40,7 +39,7 @@ async def cookie_login(
     expires_on: datetime = datetime.now(timezone.utc) + expire_offset
 
     str_date: str = datetime.strftime(expires_on, "%Y-%m-%d %H:%M:%S")
-    token: str = await state.db.users.create_session(form_data.username, str_date)
+    token: str = await database.users.create_session(session, form_data.username, str_date)
 
     if settings.ENVIRONMENT == 'local':
         secure = False
@@ -53,7 +52,8 @@ async def cookie_login(
         samesite = 'lax'
 
     res.set_cookie(
-        key="authorization", value=token,
+        key="x_auth_cookie",
+        value=token,
         expires=expires_on,
         max_age=int(expire_offset.total_seconds()),
         secure=secure,
@@ -64,28 +64,27 @@ async def cookie_login(
     return {'success': True}
 
 
-@router.post("/revoke_session")
+@router.post("/revoke")
 async def revoke_token(
-    session: HttpAuthDep,
+    user: HttpAuthDep,
     req: Request
 ) -> dict:
+    """Revokes the current cookie passed."""
     state: AppState = req.state
-    del_result: int | str = await state.db.users.revoke_session(session.token)
 
-    if del_result == constants.INVALID_SESSION:
-        raise HTTPException(status_code=401, detail="Session token invalid")
-
+    await database.users.revoke_session(user.token)
     await state.ws_clients.disconnect_clients_by_token(
-        session.username, session.token, 
+        user.username, user.token, 
         WebsocketMessages.AUTH_REVOKED, {}
     )
+    
     return {'success': True}
 
 
-@router.get("/session_info")
-async def info_token(session: HttpAuthDep) -> dict[str, str]:
+@router.get("/info")
+async def info_token(user: HttpAuthDep) -> dict[str, str]:
     token_data: dict = {
-        'username': session.username,
-        'created_at': session.created_at
+        'username': user.username,
+        'created_at': user.created_at
     }
     return token_data

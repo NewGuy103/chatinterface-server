@@ -43,3 +43,10 @@ This project uses the open source dependencies:
 - **License Text**: [MIT License](LICENSES/mit.txt)
 - **Attribution**: Copyright (c) 2021 Sebastián Ramírez
 - **Source Code**: [sqlmodel on GitHub](https://github.com/fastapi/sqlmodel)
+
+## alembic
+
+- **License**: MIT
+- **License Text**: [MIT License](LICENSES/mit.txt)
+- **Attribution**: Copyright 2009-2025 Michael Bayer.
+- **Source Code**: [alembic on GitHub](https://github.com/sqlalchemy/alembic)

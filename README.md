@@ -6,40 +6,40 @@ Currently in development, anything can change at any time!
 
 ## Requirements
 
-Python 3.10+
+* Python 3.10+ and [uv](https://docs.astral.sh/uv/).
+* A MariaDB instance.
 
 ## Installation
 
 This application requires the MariaDB Python connector, which depends on the MariaDB C connector. You can find
 instructions to install it here: [MariaDB Python Connector](https://mariadb.com/docs/server/connect/programming-languages/python/install/).
 
-`pip install newguy103-chatinterface-server` (Note: Not yet fully ready on PyPI)
+You can pull the official Docker image using:
 
-This will install the necessary dependencies, and the app itself as `chatinterface_server`.
+```bash
+docker pull ghcr.io/newguy103/chatinterface-server:latest
+```
 
 If you want to clone the repository directly:
 
 ```bash
 git clone https://github.com/newguy103/chatinterface-server
 cd chatinterface-server
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
-There is also a container image published on the GitHub container registry if you use Docker or other containerization platforms.
+This will clone the repository and setup the environment.
 
 ## Usage
 
-To run the application:
+To run the application if you cloned it locally:
 
-`uvicorn chatinterface_server.main:app`
+```bash
+fastapi run app/main.py
+```
 
-This will also work for the cloned environment, but you must execute this in the cloned environment's directory.
-
-You can also pass command-line arguments to `uvicorn`.
-
-If you cloned the repository directly, you can also use the `fastapi` command to run the application.
+There is an example Docker Compose file in the [docker](docker/) directory if you
+prefer using Docker.
 
 ## Disclaimer
 
@@ -49,4 +49,4 @@ Open source license attributions can be found in [OPEN_SOURCE_LICENSES.md](OPEN_
 
 ## Version
 
-0.1.0
+0.2.0

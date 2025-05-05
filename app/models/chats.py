@@ -19,10 +19,6 @@ class EditMessage(BaseModel):
     message_data: MessageDataField
 
 
-class DeleteMessage(BaseModel):
-    message_id: uuid.UUID
-
-
 class MessagesGetPublic(BaseModel):
     sender_name: UsernameField
     recipient_name: UsernameField

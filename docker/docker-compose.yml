@@ -10,11 +10,20 @@ services:
       - mariadb_data:/var/lib/mysql:rw
     environment:
       - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1
+      - MARIADB_USER=chatinterface_server
+      - MARIADB_DATABASE=chatinterface_server
+      - MARIADB_PASSWORD=helloworld
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 3
   chatinterface_server:
-    # image: ghcr.io/newguy103/chatinterface-server:latest
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    image: ghcr.io/newguy103/chatinterface-server:latest
+    # build:
+    #   context: ..
+    #   dockerfile: docker/Dockerfile
     container_name: chatinterface_server
     volumes:
       - ./chatinterface_server:/app/chatinterface-server_config:rw
@@ -23,7 +32,10 @@ services:
       - MARIADB_PORT=3306
       - MARIADB_DBNAME=chatinterface_server
       - MARIADB_USER=chatinterface_server
-      - MARIADB_PASSWORD=
+      - MARIADB_PASSWORD=helloworld
       - ENVIRONMENT=production
     ports:
       - 8000:8000
+    depends_on:
+      mariadb:
+        condition: service_healthy

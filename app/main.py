@@ -9,10 +9,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from sqlmodel import create_engine
-
 from .internal.config import ConfigManager, settings
-from .internal.database import MainDatabase
+from .internal.database import database
 from .internal.ws import WebsocketClients
 
 from .models.common import AppState
@@ -28,28 +26,30 @@ logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI) -> AsyncIterator[AppState]:
-    engine = create_engine(str(settings.SQLALCHEMY_ENGINE_URI))
-    db: MainDatabase = MainDatabase(engine)
-
     try:
-        await db.setup()
+        await database.setup()
     except Exception:
-        logger.exception("Database connection failed:")
+        logger.exception("Database connection setup failed:")
         raise
 
     templates = Jinja2Templates(directory=settings.TEMPLATES_DIR)
     ws_clients: WebsocketClients = WebsocketClients()
 
     app.mount("/static", StaticFiles(directory=settings.STATIC_DIR), name="static")
-    logger.info("Application started")
+    logger.info("Application started, running version '%s'" , __version__)
 
     app_state: dict = {
         'ws_clients': ws_clients,
         'config': config,
-        'templates': templates,
-        'db': db
+        'templates': templates
     }
     yield app_state
+
+    try:
+        database.close()
+    except Exception:
+        logger.critical("Failed to close database:", exc_info=True)
+        raise
 
     logger.info("Application exiting")
 
@@ -62,7 +62,7 @@ else:
 
 app: FastAPI = FastAPI(
     lifespan=app_lifespan,
-    title="chatinterface-server",
+    title="NewGuy103 - chatinterface-server",
     version=__version__,
     license_info={
         'name': 'Mozilla Public License 2.0',

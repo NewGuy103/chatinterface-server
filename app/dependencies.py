@@ -1,51 +1,64 @@
 from fastapi.responses import RedirectResponse
-from fastapi import Cookie, Depends, Request, HTTPException, WebSocket
+from fastapi import Depends, HTTPException, Security, Cookie, WebSocket, WebSocketException
 from typing import Annotated
 
-from .models.common import SessionInfo, AppState
+from fastapi.security import APIKeyCookie
+from sqlmodel import Session
+
+from .internal.database import database, engine
+from .models.common import UserInfo
+
+auth_cookie = APIKeyCookie(name='x_auth_cookie', auto_error=False)
 
 
-async def get_session_info(authorization: Annotated[str, Cookie()], request: Request) -> SessionInfo:
-    state: AppState = request.state
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+
+async def get_session_info(
+        authorization: Annotated[str, Security(auth_cookie)],
+        session: 'SessionDep'
+    ) -> UserInfo:
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization cookie missing")
 
-    session_valid: bool = await state.db.users.check_session_validity(authorization)
+    session_valid: bool = await database.users.check_session_validity(session, authorization)
     if not session_valid:
         raise HTTPException(status_code=401, detail="Session token invalid")
     
-    session_info: dict[str, str | bool] = await state.db.users.get_session_info(authorization)
-    return SessionInfo(**session_info)
+    session_info: dict[str, str | bool] = await database.users.get_session_info(session, authorization)
+    return UserInfo(**session_info)
 
 
-async def get_session_info_ws(authorization: Annotated[str, Cookie()], ws: WebSocket) -> SessionInfo:
-    state: AppState = ws.state
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization cookie missing")
+async def get_session_info_ws(
+    ws: WebSocket, session: 'SessionDep',
+    x_auth_cookie: Annotated[str | None, Cookie()] = None
+) -> UserInfo:
+    if not x_auth_cookie:
+        raise WebSocketException(code=1008, reason="Authorization cookie missing")
 
-    session_valid: bool = await state.db.users.check_session_validity(authorization)
+    session_valid: bool = await database.users.check_session_validity(session, x_auth_cookie)
     if not session_valid:
-        raise HTTPException(status_code=401, detail="Session token invalid")
+        raise WebSocketException(status_code=1008, reason="Session token invalid")
     
-    session_info: dict[str, str | bool] = await state.db.users.get_session_info(authorization)
-    return SessionInfo(**session_info)
+    session_info: dict[str, str | bool] = await database.users.get_session_info(session, x_auth_cookie)
+    return UserInfo(**session_info)
 
 
-async def login_required(
-    request: Request,
-    authorization: str | None = Cookie(None),
-) -> SessionInfo | RedirectResponse:
-    state: AppState = request.state
+async def login_required(session: 'SessionDep', authorization: str | None = Security(auth_cookie)) -> UserInfo | RedirectResponse:
     if not authorization:
         return RedirectResponse(url='/frontend/login', status_code=307)
     
-    session_valid: bool = await state.db.users.check_session_validity(authorization)
+    session_valid: bool = await database.users.check_session_validity(session, authorization)
     if not session_valid:
         return RedirectResponse(url='/frontend/login', status_code=307)
 
-    session_info: dict[str, str | bool] = await state.db.users.get_session_info(authorization)
-    return SessionInfo(**session_info)
+    session_info: dict[str, str | bool] = await database.users.get_session_info(session, authorization)
+    return UserInfo(**session_info)
 
 
-HttpAuthDep = Annotated[SessionInfo, Depends(get_session_info)]
-SessionOrRedirectDep = Annotated[SessionInfo | RedirectResponse, Depends(login_required)]
+HttpAuthDep = Annotated[UserInfo, Depends(get_session_info)]
+AuthOrRedirectDep = Annotated[UserInfo | RedirectResponse, Depends(login_required)]
+
+SessionDep = Annotated[Session, Depends(get_session)]

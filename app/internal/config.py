@@ -1,13 +1,16 @@
 import os
 import json
 import logging.config
+import warnings
 
 from typing import Literal
+from pathlib import Path
 
-from pydantic import computed_field, MariaDBDsn
+from pydantic import computed_field, MariaDBDsn, DirectoryPath, model_validator
 from pydantic_core import MultiHostUrl
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from typing import Self
 from ..version import __version__
 
 APP_NAME: str = "chatinterface-server"
@@ -15,7 +18,10 @@ DEFAULT_APP_DIR: str = os.path.join(".", f"{APP_NAME}_config")
 
 
 class AppSettings(BaseSettings):
-    model_config = SettingsConfigDict()
+    model_config = SettingsConfigDict(
+        env_file='.env', 
+        env_file_encoding='utf-8'
+    )
 
     ENVIRONMENT: Literal['local', 'development', 'production'] = 'local'
     MARIADB_HOST: str = '127.0.0.1'
@@ -24,7 +30,7 @@ class AppSettings(BaseSettings):
     MARIADB_DBNAME: str = 'chatinterface_server'
     MARIADB_USER: str = 'chatinterface_server'
 
-    MARIADB_PASSWORD: str = ''
+    MARIADB_PASSWORD: str = 'helloworld'
 
     @computed_field
     @property
@@ -38,11 +44,29 @@ class AppSettings(BaseSettings):
             path=self.MARIADB_DBNAME
         )
 
-    STATIC_DIR: str = './static'
-    TEMPLATES_DIR: str = './templates'
+    STATIC_DIR: DirectoryPath = Path('./static').resolve()
+    TEMPLATES_DIR: DirectoryPath = Path('./templates').resolve()
 
     FIRST_USER_NAME: str = 'admin'
     FIRST_USER_PASSWORD: str = 'helloworld'
+
+
+    def _check_value_default(self, key_name: str, value: str):
+        if value == 'helloworld':
+            msg = (f"The value of '{key_name}' is the default 'helloworld', "
+                    "changing it to a different value is recommended.")
+
+            if self.ENVIRONMENT == 'local':
+                warnings.warn(msg, stacklevel=1)
+            else:
+                raise ValueError(msg)
+
+    @model_validator(mode="after")
+    def _check_values_okay(self) -> Self:
+        self._check_value_default('MARIADB_PASSWORD', self.MARIADB_PASSWORD)
+        self._check_value_default('FIRST_USER_PASSWORD', self.FIRST_USER_PASSWORD)
+
+        return self
 
 
 def load_or_create_config(config_path: str, default_config: dict) -> dict:

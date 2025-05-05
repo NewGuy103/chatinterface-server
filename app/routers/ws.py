@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from pydantic import ValidationError
 
-from ..models.common import SessionInfo, AppState
+from ..models.common import UserInfo, AppState
 from ..models.ws import MessageData
 
 from ..dependencies import get_session_info_ws
@@ -16,7 +16,7 @@ logger: logging.Logger = logging.getLogger("chatinterface_server")
 
 
 @router.websocket("/chat")
-async def create_websocket(websocket: WebSocket, session: Annotated[SessionInfo, Depends(get_session_info_ws)]):
+async def create_websocket(websocket: WebSocket, session: Annotated[UserInfo, Depends(get_session_info_ws)]):
     state: AppState = websocket.state
     await websocket.accept()
 
@@ -30,13 +30,16 @@ async def create_websocket(websocket: WebSocket, session: Annotated[SessionInfo,
 
         while True:
             try:
-                ws_message: dict = await asyncio.wait_for(websocket.receive_json(), timeout=20)
+                ws_message: dict = await asyncio.wait_for(websocket.receive_json(), timeout=45)
             except json.JSONDecodeError:
                 await websocket.close(code=1003, reason="INVALID_JSON")
                 return
+            except asyncio.TimeoutError:
+                await websocket.close(code=1008, reason="TIMEOUT")
+                return
 
             if not isinstance(ws_message, dict):
-                await websocket.close(code=1003, reason="INVALID_MSGPACK")
+                await websocket.close(code=1003, reason="INVALID_JSON")
                 return
 
             try:

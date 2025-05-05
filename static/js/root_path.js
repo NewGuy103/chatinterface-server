@@ -30,7 +30,7 @@ async function safeFetch(fetchPromise) {
 }
 
 async function getSessionInfo() {
-    const [ response, error ] = await safeFetch(fetch('/api/token/session_info', { method: "GET" }))
+    const [ response, error ] = await safeFetch(fetch('/api/token/info', { method: "GET" }))
 
     if (error) {
         console.error(`[getSessionInfo] Response failed: ${error}`)
@@ -52,7 +52,7 @@ async function getSessionInfo() {
  * @returns {Promise<Array<string>>}
  */
 async function getRecipientsList() {
-    const [ response, error ] = await safeFetch(fetch('/api/chats/retrieve_recipients', { method: "GET" }))
+    const [ response, error ] = await safeFetch(fetch('/api/chats/recipients', { method: "GET" }))
 
     if (error) {
         console.error(`[getRecipientsList] Request failed failed: ${error}`)
@@ -79,7 +79,7 @@ async function getPreviousMessages(recipientsList) {
     const failList = []
 
     recipientsList.forEach(async (username) => {
-        const apiUrl = '/api/chats/retrieve_messages'
+        const apiUrl = '/api/chats/messages'
         const params = new URLSearchParams({
             recipient: username,
             amount: 100
@@ -129,7 +129,7 @@ async function getPreviousMessages(recipientsList) {
  * @returns {Promise<Map<string, string>>}
  */
 async function getMessageById(messageId) {
-    const [ response, error ] = await safeFetch(fetch(`/api/chats/get_message/${messageId}`))
+    const [ response, error ] = await safeFetch(fetch(`/api/chats/message/${messageId}`))
     if (error) {
         console.error(`[getMessageById] Request failed: ${error}`)
         alert(`[getMessageById] Request failed: ${error}`)
@@ -155,7 +155,7 @@ async function sendChatMessage(recipientName, messageData) {
         'recipient': recipientName,
         'message_data': messageData
     })
-    const fetchCall = fetch('/api/chats/send_message', {
+    const fetchCall = fetch('/api/chats/message', {
         method: "POST",
         headers: { 'Content-Type': 'application/json', 'accept': 'application/json' },
         body: reqBody
@@ -181,7 +181,7 @@ async function sendChatMessage(recipientName, messageData) {
  */
 async function updateChatMessage(messageId, messageData) {
     const reqBody = JSON.stringify({'message_data': messageData})
-    const fetchCall = fetch(`/api/chats/edit_message/${messageId}`, {
+    const fetchCall = fetch(`/api/chats/message/${messageId}`, {
         method: "PATCH",
         headers: { 'Content-Type': 'application/json', 'accept': 'application/json' },
         body: reqBody
@@ -212,7 +212,7 @@ async function updateChatMessage(messageId, messageData) {
  * @param {string} messageId 
  */
 async function deleteChatMessage(messageId) {
-    const fetchCall = fetch(`/api/chats/delete_message/${messageId}`, {
+    const fetchCall = fetch(`/api/chats/message/${messageId}`, {
         method: "DELETE",
         headers: { 'Content-Type': 'application/json', 'accept': 'application/json' }
     })
@@ -249,7 +249,7 @@ async function composeChatMessage(recipientName, messageData) {
         'recipient': recipientName,
         'message_data': messageData
     })
-    const fetchCall = fetch('/api/chats/compose_message', {
+    const fetchCall = fetch('/api/chats/message/compose', {
         method: "POST",
         headers: { 'Content-Type': 'application/json', 'accept': 'application/json' },
         body: reqBody
@@ -339,7 +339,9 @@ function createWebsocket(websocketPath) {
                 break;
         }
     }
-
+    websocket.onerror = (ev) => {
+        console.error("WebSocket closed due to error:", ev.reason)
+    }
     return websocket
 }
 

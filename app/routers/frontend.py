@@ -3,8 +3,8 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ..dependencies import SessionOrRedirectDep
-from ..models.common import AppState, SessionInfo
+from ..dependencies import AuthOrRedirectDep
+from ..models.common import AppState, UserInfo
 
 router: APIRouter = APIRouter(prefix="/frontend", tags=['frontend'])
 logger: logging.Logger = logging.getLogger("chatinterface_server")
@@ -13,11 +13,11 @@ logger: logging.Logger = logging.getLogger("chatinterface_server")
 @router.get('/', response_class=HTMLResponse)
 async def root_path(
     req: Request,
-    session_or_redirect: SessionOrRedirectDep
+    user_or_redirect: AuthOrRedirectDep
 ):
     state: AppState = req.state
-    if isinstance(session_or_redirect, RedirectResponse):
-        return session_or_redirect
+    if isinstance(user_or_redirect, RedirectResponse):
+        return user_or_redirect
 
     return state.templates.TemplateResponse(
         request=req, name='root_path.html'
@@ -27,10 +27,10 @@ async def root_path(
 @router.get('/login', response_class=HTMLResponse)
 async def login_path(
     req: Request, 
-    session_or_redirect: SessionOrRedirectDep
+    user_or_redirect: AuthOrRedirectDep
 ):
     state: AppState = req.state
-    if isinstance(session_or_redirect, SessionInfo):
+    if isinstance(user_or_redirect, UserInfo):
         return RedirectResponse('/frontend/')
 
     return state.templates.TemplateResponse(

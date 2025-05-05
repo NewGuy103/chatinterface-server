@@ -6,6 +6,8 @@
  */
 async function loginToServer(formData) {
     const loginResponseStatus = document.getElementById('login-response-status')
+    formData.append('grant_type', 'password')
+    
     let response;
     try {
         response = await fetch('/api/token/', {

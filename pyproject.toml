@@ -5,14 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "newguy103-chatinterface-server"
 version = "0.1.0"
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
 dependencies = [
-    "mariadb",
-    "fastapi[standard]",
-    "argon2-cffi",
-    "sqlmodel",
-    "uvicorn[standard]",
-    "pydantic-settings"
+    "mariadb>=1.1.12",
+    "fastapi[standard]>=0.115.12",
+    "pydantic-settings>=2.9.1",
+    "uvicorn[standard]>=0.34.2",
+    "sqlmodel>=0.0.24",
+    "argon2-cffi>=23.1.0",
+    "websockets>=15.0.1",
+    "alembic>=1.15.2",
 ]
 authors = [
     { name = "NewGuy103", email = "userchouenthusiast@gmail.com" }
@@ -44,7 +46,12 @@ Repository = "https://github.com/newguy103/chatinterface-server.git"
 Issues = "https://github.com/newguy103/chatinterface-server/issues"
 Changelog = "https://github.com/NewGuy103/chatinterface-server/blob/main/CHANGES.md"
 
-
 [tool.setuptools]
 package-dir = {"chatinterface_server" = "app"}
-packages = ["chatinterface_server"]
+
+[dependency-groups]
+dev = [
+    "asgi-lifespan>=2.1.0",
+    "grip>=4.6.2",
+    "pytest>=8.3.5",
+]

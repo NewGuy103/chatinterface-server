@@ -1,10 +1,10 @@
 import logging
 from fastapi import APIRouter, HTTPException, Request
 
-from ..dependencies import HttpAuthDep
+from ..dependencies import HttpAuthDep, SessionDep
 from ..internal.config import settings
-from ..internal import constants
-from ..internal.constants import WebsocketMessages
+from ..internal.database import database
+from ..internal.constants import WebsocketMessages, DBReturnCodes
 
 from ..models.common import AppState, UsernameField
 from ..models.users import AddUser
@@ -13,23 +13,20 @@ router = APIRouter(prefix="/users", tags=['users'])
 logger: logging.Logger = logging.getLogger('chatinterface_server')
 
 
-@router.post('/add_user')
+@router.post('/')
 async def add_user(
-    data: AddUser,
-    session: HttpAuthDep,
-    req: Request
+    data: AddUser, user: HttpAuthDep,
+    session: SessionDep
 ) -> dict:
-    state: AppState = req.state
-    # may change to roles in the future
-    if session.username != settings.FIRST_USER_NAME:
-        logger.warning("Unauthorized access attempted by user %s", session.username)
+    if user.username != settings.FIRST_USER_NAME:
+        logger.warning("Unauthorized access attempted by user %s", user.username)
         raise HTTPException(status_code=401, detail="Session token invalid")
 
-    success: str | bool = await state.db.users.add_user(data.username, data.password)
+    success: str | bool = await database.users.add_user(session, data.username, data.password)
     match success:
         case True:
             pass
-        case constants.USER_EXISTS:
+        case DBReturnCodes.USER_EXISTS:
             raise HTTPException(status_code=409, detail="User exists")
         case _:
             raise HTTPException(status_code=500, detail="Server error")
@@ -37,22 +34,22 @@ async def add_user(
     return {'success': True}
 
 
-@router.delete('/delete_user/{username}')
-async def delete_user(username: UsernameField, session: HttpAuthDep, req: Request) -> dict:
+@router.delete('/{username}')
+async def delete_user(username: UsernameField, user: HttpAuthDep, req: Request, session: SessionDep) -> dict:
     state: AppState = req.state
     # may change to roles in the future
-    if session.username != settings.FIRST_USER_NAME:
-        logger.warning("Unauthorized access attempted by user %s", session.username)
+    if user.username != settings.FIRST_USER_NAME:
+        logger.warning("Unauthorized access attempted by user %s", user.username)
         raise HTTPException(status_code=401, detail="Session token invalid")
 
     if username == settings.FIRST_USER_NAME:
         raise HTTPException(status_code=409, detail="Cannot delete first user")
 
-    success: str | bool = await state.db.users.delete_user(username)
+    success: str | bool = await database.users.delete_user(session, username)
     match success:
         case True:
             pass
-        case constants.NO_USER:
+        case DBReturnCodes.NO_USER:
             raise HTTPException(status_code=404, detail="User not found")
         case _:
             raise HTTPException(status_code=500, detail="Server error")
@@ -64,13 +61,11 @@ async def delete_user(username: UsernameField, session: HttpAuthDep, req: Reques
     return {'success': True}
 
 
-@router.get('/retrieve_users')
-async def get_users(session: HttpAuthDep, req: Request) -> list[str]:
-    state: AppState = req.state
-    # may change to roles in the future
-    if session.username != settings.FIRST_USER_NAME:
-        logger.warning("Unauthorized access attempted by user %s", session.username)
+@router.get('/')
+async def get_users(user: HttpAuthDep, session: SessionDep) -> list[str]:
+    if user.username != settings.FIRST_USER_NAME:
+        logger.warning("Unauthorized access attempted by user %s", user.username)
         raise HTTPException(status_code=401, detail="Session token invalid")
 
-    user_list: list[str] = await state.db.users.get_users()
+    user_list: list[str] = await database.users.get_users(session)
     return user_list

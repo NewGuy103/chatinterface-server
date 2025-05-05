@@ -83,7 +83,6 @@ class WebsocketClients:
         for token in session_dict.keys():
             await self.disconnect_clients_by_token(username, token, message_name, message_data)
 
-
     async def disconnect_client(
             self, username: str, token: str,
             websocket: WebSocket,
@@ -115,4 +114,3 @@ class WebsocketClients:
                 exc_info=e
             )
             return
-        
