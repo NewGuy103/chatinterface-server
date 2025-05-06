@@ -23,8 +23,8 @@ async def get_session_info(
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization cookie missing")
 
-    session_valid: bool = await database.users.check_session_validity(session, authorization)
-    if not session_valid:
+    session_expired: bool = await database.users.check_session_expired(session, authorization)
+    if session_expired:
         raise HTTPException(status_code=401, detail="Session token invalid")
     
     session_info: dict[str, str | bool] = await database.users.get_session_info(session, authorization)
@@ -38,8 +38,8 @@ async def get_session_info_ws(
     if not x_auth_cookie:
         raise WebSocketException(code=1008, reason="Authorization cookie missing")
 
-    session_valid: bool = await database.users.check_session_validity(session, x_auth_cookie)
-    if not session_valid:
+    session_expired: bool = await database.users.check_session_expired(session, x_auth_cookie)
+    if session_expired:
         raise WebSocketException(status_code=1008, reason="Session token invalid")
     
     session_info: dict[str, str | bool] = await database.users.get_session_info(session, x_auth_cookie)
@@ -50,8 +50,8 @@ async def login_required(session: 'SessionDep', authorization: str | None = Secu
     if not authorization:
         return RedirectResponse(url='/frontend/login', status_code=307)
     
-    session_valid: bool = await database.users.check_session_validity(session, authorization)
-    if not session_valid:
+    session_expired: bool = await database.users.check_session_expired(session, authorization)
+    if session_expired:
         return RedirectResponse(url='/frontend/login', status_code=307)
 
     session_info: dict[str, str | bool] = await database.users.get_session_info(session, authorization)

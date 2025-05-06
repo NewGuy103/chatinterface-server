@@ -266,7 +266,7 @@ class UserMethods:
         }
 
     @async_threaded
-    def check_session_validity(self, session: Session, session_id: str) -> bool:
+    def check_session_expired(self, session: Session, session_id: str) -> bool:
         if not isinstance(session_id, str):
             raise TypeError("session id is not a string")
 
@@ -280,7 +280,7 @@ class UserMethods:
         expiry_date: datetime = user_session.expires_on
         current_date: datetime = datetime.now()
 
-        expired: bool = expiry_date < current_date
+        expired: bool = current_date > expiry_date
         return expired
 
 
