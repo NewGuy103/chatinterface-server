@@ -36,4 +36,4 @@ jobs:
           emoji: true
           verbose: true
           job-summary: true
-          custom-pytest: source .venv/bin/activate && ./scripts/tests.sh
+          custom-pytest: source .venv/bin/activate && pytest
