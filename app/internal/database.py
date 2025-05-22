@@ -45,6 +45,10 @@ class MainDatabase:
 
         self.executor: ThreadPoolExecutor = ThreadPoolExecutor()
 
+    def override_engine(self, engine: Engine):
+        """Override SQLAlchemy engine for tests."""
+        self.engine = engine
+    
     @async_threaded
     def setup(self):
         # Let the schema creation be handled by alembic
@@ -198,7 +202,7 @@ class UserMethods:
         new_session: UserSessions = UserSessions(
             session_id=session_token,
             user_id=user.user_id, 
-            expires_on=expires_on
+            expires_on=expiry_date
         )
 
         session.add(new_session)
@@ -392,7 +396,12 @@ class ChatMethods:
         return message_id
 
     @async_threaded
-    def get_messages(self, session: Session, sender: str, recipient: str, amount: int = 100) -> str | list[MessagesGetPublic]:
+    def get_messages(
+        self, session: Session, 
+        sender: str, recipient: str, 
+        amount: int = 100,
+        offset: int = 0
+    ) -> str | list[MessagesGetPublic]:
         if not isinstance(sender, str):
             raise TypeError("sender username is not a string")
         
@@ -433,7 +442,7 @@ class ChatMethods:
                     Messages.recipient_id == sender_model.user_id
                 )
             )
-        ).order_by(desc(Messages.send_date)).limit(amount)
+        ).order_by(desc(Messages.send_date)).limit(amount).offset(offset)
         result = session.exec(statement)
 
         message_list: list[MessagesGetPublic] = []
@@ -466,7 +475,7 @@ class ChatMethods:
         if not isinstance(message_id, uuid.UUID):
             raise TypeError("message_id is not a uuid")
 
-        sender_model: Users = self.get_user(sender)
+        sender_model: Users = self.get_user(session, sender)
         if not sender_model:
             raise ValueError("sender provided is invalid")
 
@@ -490,6 +499,7 @@ class ChatMethods:
 
         return MessagesGetPublic(
             sender_name=sender_model.username,
+            recipient_name=message.recipient.username,
             message_data=message.message_data,
             send_date=datetime.strftime(message.send_date, "%Y-%m-%d %H:%M:%S"),
             message_id=str(message.message_id)

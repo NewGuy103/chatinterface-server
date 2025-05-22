@@ -5,6 +5,7 @@ from typing import Annotated
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request, Query
+from pydantic import NonNegativeInt, PositiveInt
 
 from ..models.dbtables import Users
 from ..models.common import AppState
@@ -30,11 +31,13 @@ async def get_previous_messages(
     user: HttpAuthDep, session: SessionDep,
     recipient: Annotated[str, Query(description="Recipient username", max_length=20, strict=True)],
 
-    amount: int = Query(100, description="Amount of messages to fetch (fetches latest messages)")
+    amount: PositiveInt = Query(100, description="Amount of messages to fetch (fetches latest messages)"),
+    offset: NonNegativeInt = Query(0, description="Offset of messages starting from latest")
 ) -> list[MessagesGetPublic]:
     result: list[MessagesGetPublic] | str = await database.messages.get_messages(
-        session, user.username, 
-        recipient, amount
+        session, user.username,
+        recipient, amount=amount, 
+        offset=offset
     )
     match result:
         case list():
